@@ -26,3 +26,9 @@ stopdoing-deploy-plan.html
 
 # 文档
 部署指南.md
+
+# wrangler files
+.wrangler
+.dev.vars*
+!.dev.vars.example
+!.env.example
