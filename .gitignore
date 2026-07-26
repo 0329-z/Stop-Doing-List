@@ -1,0 +1,28 @@
+node_modules/
+.DS_Store
+Thumbs.db
+*.log
+dist/
+build/
+.env
+.env.local
+
+# 视频和音频文件
+*.mp4
+*.mp3
+*.mov
+*.avi
+*.mkv
+
+# 飞书二维码和临时文件
+lark_*.png
+lark_*.jpg
+transcript.*
+
+# TRAE 相关
+.trae-html-share-packages/
+trae-deployment-knowledge-manual/
+stopdoing-deploy-plan.html
+
+# 文档
+部署指南.md

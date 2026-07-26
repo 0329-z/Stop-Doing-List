@@ -1,0 +1,136 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>不做清单 · STOP DOING LIST</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Space+Mono:ital,wght@0,400;0,700;1,400&family=Noto+Sans+SC:wght@400;700;900&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="css/style.css?v=23" />
+</head>
+<body>
+  <!-- 背景画布：点阵生成艺术 -->
+  <canvas id="bg-canvas"></canvas>
+
+  <!-- 页面快捷导航 -->
+  <nav class="top-nav" id="top-nav">
+    <a href="#" class="nav-link" data-page="home">HOME</a>
+    <a href="#" class="nav-link" data-page="list">LISTS</a>
+    <a href="#" class="nav-link" data-page="time">TIME</a>
+    <a href="#" class="nav-link" data-page="archive">ARCHIVE</a>
+    <a href="#" class="nav-link" data-page="stats">STATS</a>
+  </nav>
+
+  <!-- 主页：中央打印入口 -->
+  <section id="page-home" class="page active">
+    <div class="hero-content">
+      <div class="brand">
+        <span class="brand-line">STOP DOING</span>
+        <h1 class="brand-title">不做清单</h1>
+      </div>
+      <div class="printer-slot" id="printer-slot">
+        <img class="printer-svg" src="optimized_drawing.svg" alt="loading" />
+        <div class="printer-led"></div>
+      </div>
+      <div class="bottom-actions">
+        <button id="btn-print" class="main-btn">
+          <span class="btn-glitch">PRINT TODAY</span>
+          <span class="btn-quiet">打印今日清单</span>
+        </button>
+        <p id="print-status" class="print-status"></p>
+      </div>
+    </div>
+  </section>
+
+  <!-- 清单层：打印出的清单 -->
+  <section id="page-list" class="page">
+    <!-- 页面顶部打印机 -->
+    <div class="list-printer" id="list-printer">
+      <img class="list-printer-svg" src="optimized_drawing.svg" alt="printer" />
+      <div class="list-printer-body"></div>
+      <div class="list-printer-slot"></div>
+      <div class="list-printer-led"></div>
+    </div>
+    <!-- 遮罩：遮挡打印机出口上方的收据部分，sticky 跟随滚动 -->
+    <div class="printer-mask" id="printer-mask"></div>
+    <div class="receipt-wall" id="receipt-wall"></div>
+  </section>
+
+  <!-- 票夹回顾页 -->
+  <section id="page-archive" class="page">
+    <div class="archive-stage">
+      <h2 class="archive-title"><span>ARCHIVE</span>票夹回顾</h2>
+      <div class="archive-folder-area" id="archive-folder-area">
+        <!-- 像素文件夹（点击展开归档小票） -->
+        <div class="pixel-folder" id="pixel-folder">
+          <canvas id="folder-canvas" width="96" height="80"></canvas>
+          <div class="folder-label" id="folder-label">点击打开</div>
+        </div>
+        <!-- 小票飞出容器 -->
+        <div class="flying-tickets" id="flying-tickets"></div>
+      </div>
+      <div class="archive-empty" id="archive-empty">暂无归档清单</div>
+    </div>
+  </section>
+
+  <!-- 时光机页 -->
+  <section id="page-time" class="page">
+    <div class="time-stage">
+      <h2 class="time-title"><span>TIME MACHINE</span>时光机 / 预测</h2>
+      <p class="time-desc">输入一个坏习惯，看看它未来的快照。</p>
+      <div class="time-input-wrap">
+        <input id="bad-habit-input" type="text" placeholder="例如：熬夜刷手机、喝第三杯奶茶、无意义会议…" />
+        <button id="btn-predict" class="main-btn small">生成快照</button>
+      </div>
+      <div id="snapshot-card" class="snapshot-card hidden">
+        <div class="snapshot-label">CONSEQUENCE SNAPSHOT</div>
+        <div id="snapshot-text" class="snapshot-text"></div>
+        <button id="btn-add-today" class="main-btn small">添加到今日清单</button>
+      </div>
+    </div>
+  </section>
+
+  <!-- 统计页 -->
+  <section id="page-stats" class="page">
+    <div class="stats-stage">
+      <h2 class="stats-title"><span>DATA</span>数据 / 统计</h2>
+      <div class="stats-grid">
+        <div class="stats-card" data-period="today">
+          <div class="stats-label">本日</div>
+          <div class="stats-number" id="stat-today-count">0</div>
+          <div class="stats-unit">件未做</div>
+          <div class="stats-saved" id="stat-today-time">节省 0h</div>
+        </div>
+        <div class="stats-card" data-period="week">
+          <div class="stats-label">本周</div>
+          <div class="stats-number" id="stat-week-count">0</div>
+          <div class="stats-unit">件未做</div>
+          <div class="stats-saved" id="stat-week-time">节省 0h</div>
+        </div>
+        <div class="stats-card" data-period="month">
+          <div class="stats-label">本月</div>
+          <div class="stats-number" id="stat-month-count">0</div>
+          <div class="stats-unit">件未做</div>
+          <div class="stats-saved" id="stat-month-time">节省 0h</div>
+        </div>
+        <div class="stats-card" data-period="year">
+          <div class="stats-label">本年</div>
+          <div class="stats-number" id="stat-year-count">0</div>
+          <div class="stats-unit">件未做</div>
+          <div class="stats-saved" id="stat-year-time">节省 0h</div>
+        </div>
+      </div>
+      <div class="stats-chart">
+        <div class="chart-title">30 天趋势</div>
+        <div id="trend-bars" class="trend-bars"></div>
+      </div>
+    </div>
+  </section>
+
+  <!-- 返回主页按钮 -->
+  <button id="btn-home" class="home-btn" aria-label="回到主页">×</button>
+
+  <script src="js/app.js?v=6"></script>
+</body>
+</html>
