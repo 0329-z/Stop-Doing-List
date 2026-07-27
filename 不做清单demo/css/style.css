@@ -7,16 +7,19 @@
 }
 
 :root {
-  --bg: #1a1a1a;
-  --ink: #111;
-  --paper: #f5f2ea;
-  --paper-dim: #e8e5dd;
-  --accent: #b94e48;
-  --accent-light: #d66b65;
-  --text: #f0f0f0;
-  --muted: #888;
+  --bg: #1A1410;
+  --bg-secondary: #181A10;
+  --ink: #1A1410;
+  --paper: #F1ECCD;
+  --paper-dim: #E8E2C0;
+  --accent: #7E2625;
+  --accent-light: #A5403D;
+  --leaf: #868859;
+  --leaf-dark: #5A5C3D;
+  --text: #F0F0F0;
+  --muted: #A3A3A3;
   --font-mono: 'Space Mono', monospace;
-  --font-sans: 'Noto Sans SC', sans-serif;
+  --font-sans: 'Noto Sans SC', 'PingFang SC', 'Microsoft YaHei', sans-serif;
   --font-brand: 'ChangBanDianSong', 'Noto Sans SC', serif;
 }
 
@@ -80,7 +83,7 @@ html, body {
   justify-content: center;
   opacity: 0;
   pointer-events: none;
-  transition: opacity 0.6s ease;
+  transition: opacity 0.4s ease-out;
   padding: 5vh 5vw;
 }
 .page.active { opacity: 1; pointer-events: auto; }
@@ -117,7 +120,7 @@ html, body {
   line-height: 1;
   letter-spacing: 0.05em;
   color: #fff;
-  text-shadow: 0 0 40px rgba(185, 78, 72, 0.35);
+  text-shadow: 0 0 40px rgba(126, 38, 37, 0.35);
   transform: translateY(2px);
 }
 .brand-sub {
@@ -140,7 +143,7 @@ html, body {
   width: 100%;
   height: 100%;
   object-fit: contain;
-  filter: drop-shadow(0 0 12px rgba(185, 78, 72, 0.4));
+  filter: drop-shadow(0 0 12px rgba(126, 38, 37, 0.4));
   animation: printerPulse 2s ease-in-out infinite;
 }
 @keyframes printerPulse {
@@ -151,8 +154,8 @@ html, body {
   animation: printerActive 0.3s ease-out forwards;
 }
 @keyframes printerActive {
-  0%   { opacity: 0.4; transform: scale(0.96); filter: drop-shadow(0 0 12px rgba(185, 78, 72, 0.4)); }
-  100% { opacity: 1;   transform: scale(1);    filter: drop-shadow(0 0 30px rgba(185, 78, 72, 0.9)); }
+  0%   { opacity: 0.4; transform: scale(0.96); filter: drop-shadow(0 0 12px rgba(126, 38, 37, 0.4)); }
+  100% { opacity: 1;   transform: scale(1);    filter: drop-shadow(0 0 30px rgba(126, 38, 37, 0.9)); }
 }
 .printer-led {
   position: absolute;
@@ -184,7 +187,7 @@ html, body {
 /* ---- 主按钮：暗红底白字 50%→100% ---- */
 .main-btn {
   position: relative;
-  background: rgba(185, 78, 72, 0.5);
+  background: rgba(126, 38, 37, 0.5);
   color: #fff;
   border: none;
   padding: 16px 40px;
@@ -198,12 +201,12 @@ html, body {
   margin-top: 0;
 }
 .main-btn:hover {
-  background: rgba(185, 78, 72, 1);
-  box-shadow: 0 0 30px rgba(185, 78, 72, 0.5);
+  background: rgba(126, 38, 37, 1);
+  box-shadow: 0 0 30px rgba(126, 38, 37, 0.5);
 }
 .main-btn.small { padding: 12px 24px; font-size: 12px; }
 .main-btn:disabled { opacity: 0.25; cursor: not-allowed; box-shadow: none; }
-.main-btn:disabled:hover { background: rgba(185, 78, 72, 0.5); box-shadow: none; }
+.main-btn:disabled:hover { background: rgba(126, 38, 37, 0.5); box-shadow: none; }
 .btn-glitch { display: block; }
 .btn-quiet {
   display: block;
@@ -381,7 +384,7 @@ html, body {
   left: 0;
   right: 0;
   height: 232px; /* 覆盖到打印机出口（200+32=232px） */
-  background: #0d0d0d;
+  background: var(--bg);
   z-index: 35; /* 高于收据，低于打印机(z-index:40) */
   pointer-events: none;
 }
@@ -637,13 +640,13 @@ html, body {
   transition: background 0.2s;
 }
 .receipt-swipe-btn.finish {
-  background: #4a9e5c;
+  background: var(--leaf);
 }
-.receipt-swipe-btn.finish:active { background: #3a7e4c; }
+.receipt-swipe-btn.finish:active { background: var(--leaf-dark); }
 .receipt-swipe-btn.delete {
   background: var(--accent);
 }
-.receipt-swipe-btn.delete:active { background: #933c37; }
+.receipt-swipe-btn.delete:active { background: #5a1a19; }
 
 .receipt-item-index {
   font-size: 13px;
@@ -674,12 +677,12 @@ html, body {
 
 /* 已完成状态（Finish 后） */
 .receipt-item-wrap.finished .receipt-item-text {
-  color: #999;
+  color: #666;
   pointer-events: none;
-  opacity: 0.6;
+  opacity: 0.5;
 }
 .receipt-item-wrap.finished .receipt-item-index {
-  color: #7a9a6d;
+  color: var(--leaf);
 }
 .receipt-item-wrap.finished .receipt-item {
   background: var(--paper-dim);
@@ -809,7 +812,7 @@ html, body {
   animation: stampIn 0.4s cubic-bezier(0.175, 0.885, 0.32, 1.275) forwards;
 }
 @keyframes stampIn { to { transform: translate(-50%, -50%) rotate(-12deg) scale(1); } }
-.stamp.archived { border-color: #7a9a6d; color: #7a9a6d; }
+.stamp.archived { border-color: var(--leaf); color: var(--leaf); }
 
 /* ==================== 票夹 / 时光机 / 统计 ==================== */
 .archive-stage, .time-stage, .stats-stage {
@@ -1244,13 +1247,26 @@ html, body {
 .stats-label { font-family: var(--font-mono); font-size: 12px; color: var(--accent); letter-spacing: 0.15em; margin-bottom: 12px; }
 .stats-number { font-size: 48px; font-weight: 900; line-height: 1; color: #fff; }
 .stats-unit { font-size: 13px; color: var(--muted); margin-top: 6px; }
-.stats-saved { font-family: var(--font-mono); font-size: 12px; color: #7a9a6d; margin-top: 14px; }
+.stats-saved { font-family: var(--font-mono); font-size: 12px; color: var(--leaf); margin-top: 14px; }
 .stats-chart { background: rgba(255,255,255,0.03); border: 1px solid #222; padding: 24px; }
 .chart-title { font-family: var(--font-mono); font-size: 12px; color: var(--accent); letter-spacing: 0.15em; margin-bottom: 20px; }
 .trend-bars { display: flex; align-items: flex-end; justify-content: space-between; gap: 4px; height: 120px; }
 .trend-bar { flex: 1; background: var(--accent); min-width: 8px; opacity: 0.7; transition: opacity 0.2s, transform 0.2s; position: relative; }
 .trend-bar:hover { opacity: 1; transform: scaleY(1.05); }
 .trend-bar.zero { background: #333; opacity: 0.3; }
+
+/* ==================== prefers-reduced-motion ==================== */
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+  .printer-svg { animation: none; }
+  .printer-slot.active .printer-svg { animation: none; }
+  .list-printer.printing .list-printer-body { animation: none; }
+  .list-printer.printing .list-printer-led { animation: none; }
+}
 
 /* ==================== 响应式 ==================== */
 @media (max-width: 640px) {
