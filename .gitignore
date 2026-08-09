@@ -24,5 +24,27 @@ transcript.*
 trae-deployment-knowledge-manual/
 stopdoing-deploy-plan.html
 
-# 文档
+# 文档（保留本地，不上传仓库）
 部署指南.md
+优化更新部署手册.md
+UI修改建议-用户习惯对齐.md
+不做清单-产品解说视频方案.md
+配色调整指令-骨白赤点睛.md
+INSTRUCTION_LIST新手引导.md
+
+# WorkBuddy 工作目录（含记忆/技能等隐私，禁止上传）
+.workbuddy/
+
+# 临时开发文件
+tmp_frames/
+
+# 开发演示页（主站无链接，不上线）
+不做清单demo/hover-components-demo.html
+不做清单demo/icon-hover-frames-demo.html
+
+# 主站未引用的动画帧（door/printer/tree 主站零引用；clock 仅用 frame_ 序列，f 序列是废弃旧版）
+# 本地保留不删，仅不上传，上线后审计决定是否启用
+不做清单demo/assets/icon-frames/door/
+不做清单demo/assets/icon-frames/printer/
+不做清单demo/assets/icon-frames/tree/
+不做清单demo/assets/icon-frames/clock/f[0-9]*.png

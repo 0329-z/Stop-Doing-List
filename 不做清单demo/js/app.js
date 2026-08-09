@@ -36,7 +36,7 @@ const HABIT_CATEGORIES = [
     ]
   },
   {
-    keywords: ['零食', '奶茶', '吃', '外卖', '甜食', '蛋糕', '炸鸡', '烧烤', '喝饮料', '可乐', '夜宵', '加餐', '零食', '薯片', '饼干', '甜品', '巧克力'],
+    keywords: ['零食', '奶茶', '吃', '外卖', '甜食', '蛋糕', '炸鸡', '烧烤', '喝饮料', '可乐', '夜宵', '加餐', '薯片', '饼干', '甜品', '巧克力'],
     name: '无意识进食',
     templates: [
       (v) => `按每次约 <strong>${v.cal} 千卡</strong>计算，一年累计多摄入 <strong>${v.total} 千卡</strong>，相当于纯脂肪增重约 <strong>${v.fat} 公斤</strong>。`,
@@ -76,7 +76,7 @@ const HABIT_CATEGORIES = [
     ]
   },
   {
-    keywords: ['多任务', '同时', '接三个', '并行', '切换', ' multitask', '一边', '三心二意', '分心', '打断'],
+    keywords: ['多任务', '同时', '接三个', '并行', '切换', 'multitask', '一边', '三心二意', '分心', '打断'],
     name: '注意力分散',
     templates: [
       (v) => `每次任务切换的认知成本约 <strong>${v.min} 分钟</strong>。一天切换 <strong>${v.cnt} 次</strong>，累计浪费 <strong>${v.h} 小时</strong>。一年下来等于 <strong>${v.d} 天</strong>在做"重新进入状态"。`,
@@ -105,30 +105,48 @@ const GENERIC_TEMPLATES = [
   (habit, v) => `研究表明，一个习惯平均 <strong>${v.day} 天</strong>就会固化。继续下去，它会从"偶尔做"变成"不做不舒服"。现在写下"不做"，就是最好的干预。`
 ];
 
-const PIXEL_COLORS = [
-  '#ff1a1a', '#00ff66', '#ffcc00', '#00ccff',
-  '#ff3399', '#ff6600', '#66ffcc', '#cc66ff'
-];
-
 function loadData() {
   try {
     const raw = localStorage.getItem(STORE_KEY);
     if (raw) {
       const data = JSON.parse(raw);
+      if (!data.archives) data.archives = [];
       // 迁移旧字段 done -> finished
-      [...data.receipts, ...(data.archives || [])].forEach(r => {
+      [...data.receipts, ...data.archives].forEach(r => {
         r.items.forEach(it => {
           if (it.finished === undefined && it.done !== undefined) it.finished = it.done;
           if (it.finished === undefined) it.finished = false;
         });
       });
+      // 迁移：给没有 orderNum 的旧数据补上序号（按创建时间排序）
+      const all = [...data.receipts, ...data.archives].sort((a, b) => {
+        if (!a.createdAt) return -1;
+        if (!b.createdAt) return 1;
+        return a.createdAt - b.createdAt;
+      });
+      all.forEach((r, i) => {
+        if (!r.orderNum) r.orderNum = i + 1;
+      });
+      // 保存迁移后的数据
+      localStorage.setItem(STORE_KEY, JSON.stringify(data));
       return data;
     }
   } catch (e) {}
   return { receipts: [], archives: [], predictions: [] };
 }
 
-function saveData(data) { localStorage.setItem(STORE_KEY, JSON.stringify(data)); }
+function saveData(data) {
+  try {
+    localStorage.setItem(STORE_KEY, JSON.stringify(data));
+  } catch (e) {
+    console.warn('LocalStorage unavailable (incognito mode?), data will not persist');
+    const toast = document.createElement('div');
+    toast.style.cssText = 'position:fixed;top:60px;left:50%;transform:translateX(-50%);background:rgba(126,38,37,0.9);color:#fff;padding:8px 16px;font-size:12px;border-radius:4px;z-index:100;pointer-events:none;animation:fadeUp 0.3s ease;';
+    toast.textContent = '无痕模式：数据不会保存';
+    document.body.appendChild(toast);
+    setTimeout(() => { toast.remove(); }, 3000);
+  }
+}
 
 let appData = loadData();
 let currentPage = 'home';
@@ -145,93 +163,21 @@ function formatDateZH(dateStr) {
   return `${y}年${m}月${d}日`;
 }
 
-/* ===================== 像素背景画布 ===================== */
-const canvas = document.getElementById('bg-canvas');
-const ctx = canvas.getContext('2d');
-let width, height;
-let mouse = { x: -1000, y: -1000 };
-let mouseOnPage = false;
-let pixels = [];
-const PIXEL_SIZE = 8;
-const GRID_COLOR = 'rgba(255,255,255,0.025)';
-const BG_COLOR = '#0d0d0d';
-
-function resizeCanvas() {
-  width = canvas.width = window.innerWidth;
-  height = canvas.height = window.innerHeight;
-  initPixels();
+function formatDateUS(dateStr) {
+  const [y, m, d] = dateStr.split('-').map(Number);
+  const months = ['JAN','FEB','MAR','APR','MAY','JUN','JUL','AUG','SEP','OCT','NOV','DEC'];
+  return `${months[m - 1]} ${String(d).padStart(2, '0')}, ${y}`;
 }
 
-function initPixels() {
-  const cols = Math.ceil(width / PIXEL_SIZE) + 1;
-  const rows = Math.ceil(height / PIXEL_SIZE) + 1;
-  pixels = [];
-  for (let r = 0; r < rows; r++) {
-    for (let c = 0; c < cols; c++) {
-      pixels.push({
-        c, r, x: c * PIXEL_SIZE, y: r * PIXEL_SIZE,
-        color: null, life: 0
-      });
-    }
-  }
-}
-
-function drawPixelBackground() {
-  ctx.fillStyle = BG_COLOR;
-  ctx.fillRect(0, 0, width, height);
-
-  for (const p of pixels) {
-    const cx = p.x + PIXEL_SIZE / 2;
-    const cy = p.y + PIXEL_SIZE / 2;
-    const dist = Math.hypot(cx - mouse.x, cy - mouse.y);
-
-    // 鼠标在页面上且附近时才触发颜色
-    if (mouseOnPage && dist < 90 && p.life <= 0) {
-      const chance = 1 - (dist / 90);
-      if (Math.random() < chance * 0.12) {
-        p.color = PIXEL_COLORS[Math.floor(Math.random() * PIXEL_COLORS.length)];
-        p.life = 1;
-      }
-    }
-
-    if (p.life > 0) {
-      // 约 0.3 秒消散 (1 / 0.055 ≈ 18 帧 @60fps)
-      p.life -= 0.055;
-      if (p.life < 0) p.life = 0;
-    }
-
-    // 网格
-    ctx.fillStyle = GRID_COLOR;
-    ctx.fillRect(p.x + 0.5, p.y + 0.5, PIXEL_SIZE - 1, PIXEL_SIZE - 1);
-
-    // 彩色像素
-    if (p.life > 0) {
-      const alpha = Math.min(p.life / 0.25, 1) * 0.85;
-      ctx.fillStyle = p.color;
-      ctx.globalAlpha = alpha;
-      ctx.beginPath();
-      ctx.arc(cx, cy, PIXEL_SIZE * 0.35, 0, Math.PI * 2);
-      ctx.fill();
-      ctx.globalAlpha = 1;
-
-      if (p.life > 0.3) {
-        ctx.shadowColor = p.color;
-        ctx.shadowBlur = 5 * (p.life - 0.3) * 3;
-        ctx.beginPath();
-        ctx.arc(cx, cy, PIXEL_SIZE * 0.35, 0, Math.PI * 2);
-        ctx.fill();
-        ctx.shadowBlur = 0;
-      }
-    }
-  }
-
-  requestAnimationFrame(drawPixelBackground);
+function formatTime(timestamp) {
+  if (!timestamp) return '00:00:00';
+  const d = new Date(timestamp);
+  return `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}:${String(d.getSeconds()).padStart(2, '0')}`;
 }
 
 /* ===================== 页面导航 ===================== */
 let pages = {};
-let homeBtn, receiptWall, archiveEmpty;
-let folderEl, folderCanvas, flyingTickets, folderLabel;
+let homeBtn, receiptWall;
 
 function getPages() {
   pages = {
@@ -243,11 +189,6 @@ function getPages() {
   };
   homeBtn = document.getElementById('btn-home');
   receiptWall = document.getElementById('receipt-wall');
-  archiveEmpty = document.getElementById('archive-empty');
-  folderEl = document.getElementById('pixel-folder');
-  folderCanvas = document.getElementById('folder-canvas');
-  flyingTickets = document.getElementById('flying-tickets');
-  folderLabel = document.getElementById('folder-label');
 }
 
 function showPage(name) {
@@ -255,7 +196,13 @@ function showPage(name) {
   Object.values(pages).forEach(p => { if (p) p.classList.remove('active'); });
   if (pages[name]) pages[name].classList.add('active');
   currentPage = name;
-  if (homeBtn) homeBtn.classList.toggle('visible', name !== 'home');
+  if (homeBtn) {
+    // LIST/TIME/DATA 页改用 BACK TO HOME 链接，不再显示叉号
+    const useBackLink = name === 'list' || name === 'time' || name === 'stats';
+    const shouldShow = name === 'home' ? false : (useBackLink ? false : true);
+    homeBtn.classList.toggle('visible', shouldShow);
+    homeBtn.classList.remove('on-list');
+  }
 
   // 高亮导航
   document.querySelectorAll('.nav-link').forEach(l => {
@@ -269,19 +216,24 @@ function showPage(name) {
       if (receiptWall) receiptWall.innerHTML = '<div style="color:#888;font-family:Space Mono;margin-top:20vh">还没有打印过清单。回到主页点击 PRINT TODAY。</div>';
     }
     if (name === 'archive') renderArchive();
-    if (name === 'stats') renderStats();
+    if (name === 'stats') renderDataGrid();
     if (name === 'time') {
       const card = document.getElementById('snapshot-card');
       if (card) card.classList.add('hidden');
       currentSnapshot = null;
     }
-    
+
     // 离开清单页时隐藏顶部打印机
     if (name !== 'list') {
       const printer = getListPrinter();
       if (printer) printer.classList.remove('visible', 'printing');
       isNewPrint = false; // 重置打印标记
     }
+    // 离开归档页时收回门后空间
+    if (name !== 'archive' && window.ArchiveSpace && typeof window.ArchiveSpace.reset === 'function') {
+      window.ArchiveSpace.reset();
+    }
+
   } catch (e) { console.warn('showPage error:', e); }
 }
 
@@ -295,16 +247,55 @@ document.addEventListener('DOMContentLoaded', () => {
     });
   });
   if (homeBtn) homeBtn.addEventListener('click', () => showPage('home'));
+  // BACK TO HOME 链接（LIST/TIME/DATA 页右上角）
+  document.querySelectorAll('.back-home-link').forEach(link => {
+    link.addEventListener('click', e => {
+      e.preventDefault();
+      showPage('home');
+    });
+  });
 });
 
 /* ===================== 清单打印 ===================== */
 let printBtn, printStatus, printerSlot;
+let printIcon, printIconTimer = null, printIconIdx = 0;
+const PRINT_ICON_FRAMES = 68;
+const PRINT_ICON_FPS = 12;
 
 function setupPrintButton() {
-  printBtn = document.getElementById('btn-print');
+  printBtn = document.getElementById('btn-print');   // 兼容保留：部分旧逻辑可能仍引用
   printStatus = document.getElementById('print-status');
   printerSlot = document.getElementById('printer-slot');
-  if (printBtn) printBtn.addEventListener('click', printToday);
+  printIcon = document.getElementById('print-icon');
+  if (printIcon) {
+    // 预加载 23 帧
+    printIcon._frames = [];
+    for (let i = 0; i < PRINT_ICON_FRAMES; i++) {
+      const im = new Image();
+      im.src = `assets/icon-frames/printer-red/f${String(i).padStart(2, '0')}.png`;
+      printIcon._frames.push(im);
+    }
+    printIcon.addEventListener('click', printToday);
+    printIcon.addEventListener('mouseenter', startPrintIconPlay);
+    printIcon.addEventListener('mouseleave', stopPrintIconPlay);
+  }
+}
+
+function startPrintIconPlay() {
+  if (!printIcon) return;
+  stopPrintIconPlay();
+  printIconIdx = 0;
+  printIconTimer = setInterval(() => {
+    printIconIdx = (printIconIdx + 1) % PRINT_ICON_FRAMES;
+    const im = printIcon._frames[printIconIdx];
+    if (im) printIcon.src = im.src;
+  }, 1000 / PRINT_ICON_FPS);
+}
+
+function stopPrintIconPlay() {
+  if (printIconTimer) { clearInterval(printIconTimer); printIconTimer = null; }
+  printIconIdx = 0;
+  if (printIcon) printIcon.src = 'assets/icon-frames/printer-red/f00.png';
 }
 
 function getTodayReceipt() {
@@ -313,17 +304,11 @@ function getTodayReceipt() {
 function hasTodayReceipt() { return !!getTodayReceipt(); }
 
 function updatePrintButton() {
-  if (!printBtn || !printStatus) return;
+  if (!printStatus) return;
   if (hasTodayReceipt()) {
-    printBtn.disabled = false;
-    printBtn.querySelector('.btn-glitch').textContent = 'VIEW LISTS';
-    printBtn.querySelector('.btn-quiet').textContent = '查看今日清单';
     printStatus.textContent = `今日清单已打印：${formatDateZH(todayKey())}`;
   } else {
-    printBtn.disabled = false;
-    printBtn.querySelector('.btn-glitch').textContent = 'PRINT TODAY';
-    printBtn.querySelector('.btn-quiet').textContent = '打印今日清单';
-    printStatus.textContent = '点击下方按钮，打印今天的「不做清单」';
+    printStatus.textContent = '点击上方打印机，打印今天的「不做清单」';
   }
 }
 
@@ -333,9 +318,12 @@ function createReceipt(date, items = null) {
     { text: '', finished: false },
     { text: '', finished: false }
   ];
+  // 基于已打印过的清单总数（receipts + archives）生成递增序号
+  const totalCount = appData.receipts.length + appData.archives.length;
   return {
     id: 'R' + Date.now() + Math.random().toString(36).slice(2, 6),
     date,
+    orderNum: totalCount + 1,
     items: blankItems.map(t => (typeof t === 'string' ? { text: t, finished: false } : { ...t })),
     archived: false,
     createdAt: Date.now()
@@ -352,7 +340,7 @@ function printToday(e) {
     return;
   }
   if (printerSlot) printerSlot.classList.add('active');
-  if (printBtn) printBtn.disabled = true;
+  if (printIcon) printIcon.classList.add('busy');
 
   setTimeout(() => {
     const receipt = createReceipt(todayKey());
@@ -361,8 +349,84 @@ function printToday(e) {
     updatePrintButton();
     isNewPrint = true; // 标记为新打印，触发打印动画
     showPage('list');
-    setTimeout(() => { if (printerSlot) printerSlot.classList.remove('active'); }, 800);
+    // 打印联动钩子：通知流体背景模块
+    window.dispatchEvent(new CustomEvent('print-progress', { detail: { active: true, receiptId: receipt.id } }));
+    // active:false 改为监听出票动画结束（见 schedulePrintEnd），不再硬编码 800ms
+    schedulePrintEnd();
   }, 600);
+}
+
+/* 打印结束调度：监听出票动画 transitionend 再解除遮罩，避免硬编码超时导致遮罩提前消失。
+   出票动画由 renderReceiptWall 内 JS transition 驱动（transform 4.5s），故监听 transitionend；
+   保留 6s 兜底超时（>4.5s 动画 + 余量），防止事件未触发或用户切页导致遮罩永久残留。
+   每次调用创建独立闭包，支持重复打印；finish 时移除监听器，无一次性监听残留。 */
+function schedulePrintEnd() {
+  let finished = false;
+  let boundEl = null;
+  let boundHandler = null;
+  let fallbackTimer = null;
+
+  function finish() {
+    if (finished) return;
+    finished = true;
+    if (boundEl && boundHandler) boundEl.removeEventListener('transitionend', boundHandler);
+    clearTimeout(fallbackTimer);
+    if (printerSlot) printerSlot.classList.remove('active');
+    if (printIcon) printIcon.classList.remove('busy');
+    stopPrintAnimation(); // 出票结束即刻停止打印机动画：LED 停闪、机身停震
+    window.dispatchEvent(new CustomEvent('print-progress', { detail: { active: false } }));
+  }
+
+  fallbackTimer = setTimeout(finish, 6000);
+
+  // 等两帧让 renderReceiptWall 创建 .printing-out 元素并启动 transition
+  requestAnimationFrame(() => {
+    requestAnimationFrame(() => {
+      const el = document.querySelector('.receipt.printing-out');
+      if (!el) return; // 找不到（如已切页）则由兜底超时处理
+      boundEl = el;
+      boundHandler = (e) => {
+        // 只响应 transform（4.5s 主下落），忽略 opacity（0.8s 先结束）
+        if (e.target === el && e.propertyName === 'transform') finish();
+      };
+      el.addEventListener('transitionend', boundHandler);
+    });
+  });
+}
+
+/* 打印机遮罩：计数式驱动，任何出票动画期间显示，最后一个动画结束才消失。
+   active:true → 计数+1 并显示；active:false → 计数-1，归零时隐藏。
+   这样多张收据连续动画、重播与首打并存时，遮罩不会因先结束的动画而提前消失。 */
+var printMaskCount = 0;
+window.addEventListener('print-progress', function(e) {
+  const printerMask = document.getElementById('printer-mask');
+  if (!printerMask) return;
+  if (e.detail.active) {
+    printMaskCount++;
+    printerMask.classList.add('show');
+  } else {
+    printMaskCount = Math.max(0, printMaskCount - 1);
+    if (printMaskCount === 0) printerMask.classList.remove('show');
+  }
+});
+
+/* 重播路径遮罩退出调度：监听 .printing 收据的 animationend（CSS receiptDrop 1.4s），
+   结束后 dispatch active:false；6s 兜底防切页/重渲染导致事件丢失后遮罩永久残留。
+   与 schedulePrintEnd（.printing-out 的 transitionend 调度）并行，互不干扰。 */
+function scheduleReplayMaskExit(el) {
+  let finished = false;
+  let handler = null;
+  let timer = null;
+  function finish() {
+    if (finished) return;
+    finished = true;
+    if (handler) el.removeEventListener('animationend', handler);
+    clearTimeout(timer);
+    window.dispatchEvent(new CustomEvent('print-progress', { detail: { active: false } }));
+  }
+  timer = setTimeout(finish, 6000);
+  handler = (e) => { if (e.target === el) finish(); };
+  el.addEventListener('animationend', handler);
 }
 
 /* ===================== 收据墙渲染 ===================== */
@@ -398,6 +462,7 @@ function renderReceiptWall() {
   // 如果是新打印，显示打印机并启动动画
   const isFirstNew = isNewPrint;
   if (isNewPrint) {
+    isNewPrint = false; // 消费即复位：出票动画只播一次，后续重渲染全部走静态分支
     startPrintAnimation();
   } else {
     // 不是新打印，显示静态打印机作为装饰
@@ -408,91 +473,106 @@ function renderReceiptWall() {
   appData.receipts.forEach((receipt, index) => {
     const wrap = document.createElement('div');
     wrap.className = 'receipt-wrap';
+    let receiptEl = null; // 提升到回调顶层：供 else 块外的 isPrintingOut 分支引用
     const isPrintingOut = index === 0 && isFirstNew;
     if (isPrintingOut) {
       wrap.classList.add('printing-out');
+      receipt._animated = true; // 已播出票动画：堵住下方 .printing 重播路径
     } else if (receipt.date === todayKey() && !receipt._animated && !isFirstNew) {
       wrap.classList.add('printing');
       receipt._animated = true;
     }
     wrap.style.animationDelay = (index * 0.06) + 's';
+    wrap.dataset.receiptIndex = index;
 
-    const receiptEl = document.createElement('div');
-    receiptEl.className = 'receipt';
-    if (receipt.archived) receiptEl.style.opacity = '0.55';
-
-    // 顶部条形码
-    const topBarcode = document.createElement('div');
-    topBarcode.className = 'receipt-top-barcode';
-    receiptEl.appendChild(topBarcode);
-
-    // 条形码下方波浪分隔线
-    const wavyDivider = document.createElement('div');
-    wavyDivider.className = 'receipt-wavy-divider';
-    receiptEl.appendChild(wavyDivider);
-
-    // 打印扫描遮罩层（新打印时显示）
-    if (isPrintingOut) {
-      const scanOverlay = document.createElement('div');
-      scanOverlay.className = 'print-scan-overlay';
-      receiptEl.appendChild(scanOverlay);
-    }
-
-    // Header
-    const header = document.createElement('div');
-    header.className = 'receipt-header';
-    header.innerHTML = `
-      <span class="receipt-tag">DAY RECEIPT · STOP DOING LIST</span>
-      <h3 class="receipt-title">Day Receipt</h3>
-      <div class="receipt-date">${formatDateZH(receipt.date)} · ORDER #${String(index + 1).padStart(4, '0')}</div>
-    `;
-
-    // Items
-    const itemsEl = document.createElement('div');
-    itemsEl.className = 'receipt-items';
-    renderItems(receipt, itemsEl);
-
-    // Footer
-    const footer = document.createElement('div');
-    footer.className = 'receipt-footer';
-    const finishedCount = receipt.items.filter(i => i.finished).length;
-    const total = receipt.items.length;
-    footer.innerHTML = `
-      <div>${finishedCount === total && total > 0 ? 'GOOOOOD !' : 'HAVE A NICE DAY.'}</div>
-      <div class="receipt-barcode"></div>
-    `;
-
-    receiptEl.appendChild(header);
-    receiptEl.appendChild(itemsEl);
-    receiptEl.appendChild(footer);
-
-    // 底部波浪边缘
-    const bottomWave = document.createElement('div');
-    bottomWave.className = 'receipt-bottom-wave';
-    receiptEl.appendChild(bottomWave);
-
-    wrap.appendChild(receiptEl);
-
-    // Connector
-    if (index < appData.receipts.length - 1) {
-      const connector = document.createElement('div');
-      connector.className = 'receipt-connector';
-      if (receipt.archived) connector.classList.add('cut');
-      wrap.appendChild(connector);
-    }
-
-    // Stamp
     if (receipt.archived) {
-      const stamp = document.createElement('div');
-      stamp.className = 'stamp archived';
-      stamp.textContent = receipt.items.every(i => i.finished) ? 'DONE' : 'ARCHIVED';
-      receiptEl.appendChild(stamp);
+      // 已归档收据：撕下来的独立单张形态（复用 .roam-receipt 体系，宽度沿用清单墙宽度）
+      wrap.classList.add('archived');
+      const archivedEl = buildArchivedReceiptDom(receipt, index);
+      wrap.appendChild(archivedEl);
+      // 已归档收据之间不渲染 connector，间距自然收拢
+    } else {
+      // 未归档收据：连续小票形态
+      receiptEl = document.createElement('div');
+      receiptEl.className = 'receipt';
+
+      // 顶部条形码
+      const topBarcode = document.createElement('div');
+      topBarcode.className = 'receipt-top-barcode';
+      receiptEl.appendChild(topBarcode);
+
+      // 条形码下方波浪分隔线
+      const wavyDivider = document.createElement('div');
+      wavyDivider.className = 'receipt-wavy-divider';
+      receiptEl.appendChild(wavyDivider);
+
+      // 打印扫描遮罩层（新打印时显示）
+      if (isPrintingOut) {
+        const scanOverlay = document.createElement('div');
+        scanOverlay.className = 'print-scan-overlay';
+        receiptEl.appendChild(scanOverlay);
+      }
+
+      // Header
+      const header = document.createElement('div');
+      header.className = 'receipt-header';
+      header.innerHTML = `
+        <span class="receipt-tag">STOP-DOING LIST</span>
+        <h3 class="receipt-title">Day Receipt</h3>
+        <div class="receipt-date">${formatDateUS(receipt.date)} · ${formatTime(receipt.createdAt)}</div>
+        <div class="receipt-order">ORDER #${String(receipt.orderNum || index + 1).padStart(4, '0')}</div>
+      `;
+
+      // Items
+      const itemsEl = document.createElement('div');
+      itemsEl.className = 'receipt-items';
+      renderItems(receipt, itemsEl);
+
+      // Footer
+      const footer = document.createElement('div');
+      footer.className = 'receipt-footer';
+      const finishedCount = receipt.items.filter(i => i.finished).length;
+      const total = receipt.items.length;
+      footer.innerHTML = `
+        <div>${finishedCount === total && total > 0 ? 'GOOOOOD !' : 'HAVE A NICE DAY.'}</div>
+        <div class="receipt-barcode"></div>
+      `;
+
+      receiptEl.appendChild(header);
+      receiptEl.appendChild(itemsEl);
+      receiptEl.appendChild(footer);
+
+      // 底部波浪边缘
+      const bottomWave = document.createElement('div');
+      bottomWave.className = 'receipt-bottom-wave';
+      receiptEl.appendChild(bottomWave);
+
+      wrap.appendChild(receiptEl);
+
+      // Connector：仅当下一张收据也未归档时才渲染（连续小票只在未归档收据间连接）
+      if (index < appData.receipts.length - 1) {
+        const nextReceipt = appData.receipts[index + 1];
+        if (!nextReceipt.archived) {
+          const connector = document.createElement('div');
+          connector.className = 'receipt-connector';
+          wrap.appendChild(connector);
+        }
+      }
     }
+
+    // 绑定长按手势（归档/撤销归档）
+    attachReceiptGesture(wrap, receipt);
 
     receiptWall.appendChild(wrap);
 
+    // 重播路径（.printing，CSS receiptDrop 动画）：dispatch 遮罩显示，animationend 时解除
+    if (wrap.classList.contains('printing')) {
+      window.dispatchEvent(new CustomEvent('print-progress', { detail: { active: true } }));
+      scheduleReplayMaskExit(wrap);
+    }
+
     // 新打印的收据：JS 驱动下滑动画
-    if (isPrintingOut) {
+    if (isPrintingOut && receiptEl) {
       receiptEl.classList.add('printing-out');
       // 第一帧：设置初始状态（无过渡）
       receiptEl.style.transition = 'none';
@@ -514,9 +594,10 @@ function renderReceiptWall() {
       }, 5000);
     }
   });
+  window.dispatchEvent(new CustomEvent('sdl:wall-rendered', { detail: { receiptCount: appData.receipts.length } }));
 }
 
-/* ===================== 清单行渲染（含滑动操作）===================== */
+/* ===================== 清单行渲染 ===================== */
 function renderItems(receipt, container) {
   container.innerHTML = '';
 
@@ -524,115 +605,26 @@ function renderItems(receipt, container) {
     const wrap = document.createElement('div');
     wrap.className = 'receipt-item-wrap' + (item.finished ? ' finished' : '');
 
-    // 滑动操作按钮层
-    const swipeActions = document.createElement('div');
-    swipeActions.className = 'receipt-swipe-actions';
-
-    const finishBtn = document.createElement('button');
-    finishBtn.className = 'receipt-swipe-btn finish';
-    finishBtn.textContent = 'Finish';
-    finishBtn.addEventListener('click', e => {
-      e.stopPropagation();
-      item.finished = !item.finished;
-      saveData(appData);
-      renderItems(receipt, container);
-    });
-
-    const deleteBtn = document.createElement('button');
-    deleteBtn.className = 'receipt-swipe-btn delete';
-    deleteBtn.textContent = 'Delete';
-    deleteBtn.addEventListener('click', e => {
-      e.stopPropagation();
-      receipt.items.splice(i, 1);
-      saveData(appData);
-      renderItems(receipt, container);
-    });
-
-    swipeActions.appendChild(finishBtn);
-    swipeActions.appendChild(deleteBtn);
-
-    // 行内容
+    // 行内容（input 始终 readonly，编辑移到放大视图）
     const row = document.createElement('div');
     row.className = 'receipt-item';
 
+    // 固定"不"字前缀（纯展示层，不可选/不可删/不可编辑）。
+    // item.text 已以"不"开头时不重复加（防重复）。
+    const showPrefix = !String(item.text || '').startsWith('不');
+
+    // 前缀与 input 包在同一个 .receipt-item-body 里（内部无间距），
+    // 保证"不"与正文视觉一体、删除线连续；.receipt-item 的 gap 只作用于序号与内容体之间
     row.innerHTML = `
       <span class="receipt-item-index">${String(i + 1).padStart(2, '0')}</span>
-      <input class="receipt-item-text" value="${escapeHtml(item.text)}"
-             placeholder="填写今天不做的第${i + 1}件事…" data-index="${i}"
-             ${item.finished ? 'readonly' : ''} />
+      <span class="receipt-item-body">${showPrefix ? '<span class="receipt-item-prefix" aria-hidden="true">不</span>' : ''}<input class="receipt-item-text" value="${escapeHtml(item.text)}"
+             placeholder="做的第${i + 1}件事" data-index="${i}" readonly /></span>
     `;
 
-    const input = row.querySelector('input');
-    input.addEventListener('change', () => {
-      item.text = input.value;
-      saveData(appData);
+    row.addEventListener('click', () => {
+      openItemZoom(receipt, item, i, container);
     });
 
-    // ----- 触摸/鼠标滑动交互 -----
-    let startX = 0, startY = 0, isDragging = false, isHorizontal = false;
-
-    row.addEventListener('pointerdown', e => {
-      startX = e.clientX;
-      startY = e.clientY;
-      isDragging = false;
-      isHorizontal = false;
-      row.setPointerCapture(e.pointerId);
-    });
-
-    row.addEventListener('pointermove', e => {
-      if (!row.hasPointerCapture(e.pointerId)) return;
-      const dx = e.clientX - startX;
-      const dy = e.clientY - startY;
-      if (!isDragging && (Math.abs(dx) > 5 || Math.abs(dy) > 5)) {
-        isDragging = true;
-        isHorizontal = Math.abs(dx) > Math.abs(dy);
-      }
-      if (!isDragging || !isHorizontal) return;
-      // 只允许左滑
-      if (dx < 0) {
-        const offset = Math.max(dx, -140);
-        row.style.transition = 'none';
-        row.style.transform = `translateX(${offset}px)`;
-      }
-    });
-
-    row.addEventListener('pointerup', e => {
-      row.style.transition = '';
-      if (!isDragging || !isHorizontal) {
-        // 点击行为：没有拖动则聚焦输入框
-        if (!item.finished) input.focus();
-        row.style.transform = '';
-        return;
-      }
-      const dx = e.clientX - startX;
-      if (dx < -40) {
-        row.classList.add('swiped-left');
-        row.classList.remove('swiped-right');
-      } else {
-        row.classList.add('swiped-right');
-        row.classList.remove('swiped-left');
-      }
-    });
-
-    row.addEventListener('pointercancel', () => {
-      row.style.transition = '';
-      row.style.transform = '';
-    });
-
-    // 点击行外部关闭滑动
-    row.addEventListener('pointerleave', () => {
-      // 不做任何事，让 pointerup 处理
-    });
-
-    // 点击其他地方重置滑动
-    document.addEventListener('pointerdown', function resetSwipe(e) {
-      if (!wrap.contains(e.target)) {
-        row.classList.remove('swiped-left');
-        row.classList.add('swiped-right');
-      }
-    });
-
-    wrap.appendChild(swipeActions);
     wrap.appendChild(row);
     container.appendChild(wrap);
   });
@@ -649,12 +641,516 @@ function renderItems(receipt, container) {
   container.appendChild(addBtn);
 }
 
+/* ===================== 放大视图（删除线手势 + 文字编辑）=====================
+   语义：有删除线 = 未完成（待办）；抹掉删除线 = 完成；画回 = 撤销完成。
+   视图内一切改动只写暂存，点绿对号才统一提交并同步收据；遮罩空白无响应。 */
+function openItemZoom(receipt, item, i, container) {
+  // 移除已有实例（避免叠加）
+  const existing = document.querySelector('.item-zoom-overlay');
+  if (existing) existing.remove();
+
+  let stagedFinished = item.finished;
+  let stagedText = item.text;
+
+  const overlay = document.createElement('div');
+  overlay.className = 'item-zoom-overlay';
+
+  const bar = document.createElement('div');
+  bar.className = 'item-zoom-bar';
+
+  const textEl = document.createElement('div');
+  textEl.className = 'item-zoom-text';
+
+  // 固定"不"字前缀（不可选/不可删/不可编辑）；item.text 已以"不"开头时不重复加
+  const showPrefix = !String(stagedText || '').startsWith('不');
+  let prefixEl = null;
+  if (showPrefix) {
+    prefixEl = document.createElement('span');
+    prefixEl.className = 'item-zoom-prefix';
+    prefixEl.setAttribute('aria-hidden', 'true');
+    prefixEl.textContent = '不';
+    textEl.appendChild(prefixEl);
+  }
+
+  let span = document.createElement('span');
+  span.textContent = stagedText;
+  textEl.appendChild(span);
+
+  // 删除线：left:0; width:100% 覆盖"前缀 + 正文"整体（前缀在 textEl 最左，起点即"不"字左缘）
+  const strike = document.createElement('div');
+  strike.className = 'item-zoom-strike';
+  textEl.appendChild(strike);
+
+  const checkBtn = document.createElement('button');
+  checkBtn.className = 'item-zoom-check';
+  checkBtn.setAttribute('aria-label', '保存并返回');
+  checkBtn.innerHTML = '<svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="var(--leaf)" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="4,12 10,18 20,6"/></svg>';
+
+  const trashBtn = document.createElement('button');
+  trashBtn.className = 'item-zoom-trash';
+  trashBtn.setAttribute('aria-label', '删除整条');
+  trashBtn.innerHTML = '<svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="#C02517" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3,6 21,6"/><path d="M19,6l-1,14a2,2 0 0,1 -2,2H8a2,2 0 0,1 -2,-2L5,6"/><path d="M10,11v6"/><path d="M14,11v6"/><path d="M9,6V4a1,1 0 0,1 1,-1h4a1,1 0 0,1 1,1v2"/></svg>';
+
+  bar.appendChild(textEl);
+  bar.appendChild(checkBtn);
+  bar.appendChild(trashBtn);
+  const hint = document.createElement('div');
+  hint.className = 'item-zoom-hint';
+  function updateZoomHint() {
+    hint.textContent = stagedFinished ? '长按内容左滑标记未完成' : '长按删除线右滑标记完成';
+  }
+  updateZoomHint();
+  overlay.appendChild(hint);
+  overlay.appendChild(bar);
+  document.body.appendChild(overlay);
+
+  requestAnimationFrame(() => overlay.classList.add('show'));
+  window.dispatchEvent(new CustomEvent('sdl:zoom-opened', { detail: { overlay: overlay, itemIndex: i } }));
+
+  // ---- 删除线手势 + 文字编辑 ----
+  // 按住即拖（与开头动画第二幕一致），水平 ≥8px 激活，垂直滑动判为滚动
+  // eraseX = 删除线被抹除的宽度（0=线完整=未完成；W=线全隐=完成）
+  let W = textEl.clientWidth;
+  let eraseX = stagedFinished ? W : 0;
+  let dragging = false;
+  let pointerStartX = 0, pointerStartY = 0;
+  let moved = false;
+  let editing = false;
+
+  function renderStrike() {
+    strike.style.clipPath = `inset(0 0 0 ${eraseX}px)`;
+  }
+  renderStrike();
+
+  function remeasure() {
+    W = textEl.clientWidth;
+    if (eraseX > W) eraseX = W;
+    renderStrike();
+  }
+
+  function commitErase() {
+    // ≥70% 吸附到目标视觉态，否则回弹到当前暂存态
+    const target = eraseX >= W * 0.7 ? W : 0;
+    strike.style.transition = 'clip-path 0.3s';
+    eraseX = target;
+    renderStrike();
+    setTimeout(() => { strike.style.transition = ''; }, 320);
+    stagedFinished = (eraseX >= W && W > 0);
+    updateZoomHint();   // 提示文案跟随暂存状态实时切换
+  }
+
+  function enterEdit() {
+    if (editing || stagedFinished) return;
+    editing = true;
+    textEl.classList.add('editing'); // 编辑态切 flex 布局：前缀"不"与输入框同行不被挤走
+    const input = document.createElement('input');
+    input.className = 'item-zoom-input';
+    input.value = stagedText;
+    input.setAttribute('placeholder', '填写内容…');
+    span.replaceWith(input);
+    input.focus();
+    input.setSelectionRange(input.value.length, input.value.length);
+
+    input.addEventListener('input', () => {
+      stagedText = input.value;
+      remeasure();
+    });
+
+    function finishEdit() {
+      const newSpan = document.createElement('span');
+      newSpan.textContent = stagedText;
+      input.replaceWith(newSpan);
+      span = newSpan;
+      editing = false;
+      textEl.classList.remove('editing');
+      remeasure();
+    }
+
+    input.addEventListener('blur', finishEdit);
+    input.addEventListener('keydown', e => {
+      if (e.key === 'Enter') { e.preventDefault(); input.blur(); }
+    });
+  }
+
+  textEl.addEventListener('pointerdown', e => {
+    if (editing) return;
+    pointerStartX = e.clientX;
+    pointerStartY = e.clientY;
+    moved = false;
+    dragging = false;
+    try { textEl.setPointerCapture(e.pointerId); } catch (_) {}
+  });
+
+  textEl.addEventListener('pointermove', e => {
+    if (!textEl.hasPointerCapture(e.pointerId)) return;
+    const dx = e.clientX - pointerStartX;
+    const dy = e.clientY - pointerStartY;
+    if (!dragging) {
+      // 水平 ≥8px 且水平占优 → 立即激活；垂直 >10px 且垂直占优 → 判为滚动
+      if (Math.abs(dx) >= 8 && Math.abs(dx) > Math.abs(dy)) {
+        dragging = true;
+        bar.classList.add('dragging');
+        hint.classList.add('fade');
+        remeasure();
+      } else if (Math.abs(dy) > 10 && Math.abs(dy) > Math.abs(dx)) {
+        moved = true;
+        return;
+      } else {
+        return;
+      }
+    }
+    // 已激活：手指 x 位置直接映射为 eraseX（跟手）
+    const rect = textEl.getBoundingClientRect();
+    W = rect.width;
+    const x = e.clientX - rect.left;
+    eraseX = Math.max(0, Math.min(W, x));
+    strike.style.transition = 'none';
+    renderStrike();
+  });
+
+  function endPointer(e) {
+    bar.classList.remove('dragging');
+    if (textEl.hasPointerCapture(e.pointerId)) {
+      try { textEl.releasePointerCapture(e.pointerId); } catch (_) {}
+    }
+    if (dragging) {
+      commitErase();           // 仅更新暂存，不写数据、不动收据、不关闭
+      dragging = false;
+    } else if (!moved) {
+      enterEdit();             // 单击 → 进入文字编辑
+    }
+  }
+
+  textEl.addEventListener('pointerup', endPointer);
+  textEl.addEventListener('pointercancel', endPointer);
+
+  // ---- 两个出口：绿对号提交 / 红垃圾桶删除（遮罩空白无响应）----
+  checkBtn.addEventListener('click', e => {
+    e.stopPropagation();
+    item.text = stagedText;
+    item.finished = stagedFinished;
+    saveData(appData);
+    window.dispatchEvent(new CustomEvent('sdl:zoom-committed', { detail: { item: item, itemIndex: i } }));
+    renderItems(receipt, container);
+    close();
+  });
+
+  trashBtn.addEventListener('click', e => {
+    e.stopPropagation();
+    receipt.items.splice(i, 1);
+    saveData(appData);
+    renderItems(receipt, container);
+    close();
+  });
+
+  function close() {
+    overlay.classList.remove('show');
+    setTimeout(() => overlay.remove(), 250);
+  }
+}
+
 /* ===================== 归档 ===================== */
 function archiveReceipt(receipt) {
   if (receipt.archived) return;
   receipt.archived = true;
   appData.archives.push({ ...receipt, archivedAt: Date.now() });
   saveData(appData);
+  renderReceiptWall();
+}
+
+/* 全部完成判定（基于非空条目；空条目不再阻止盖章） */
+function isAllFinished(receipt) {
+  const items = nonEmptyItems(receipt);
+  return items.length > 0 && items.every(i => i.finished);
+}
+
+/* 给"不"字前缀用：item.text 已以"不"开头时不重复加 */
+function withNotPrefix(text) {
+  if (!text) return text;
+  return String(text).startsWith('不') ? text : '不' + text;
+}
+
+/* 归档/展示用非空条目：text trim 后为空的条目视为未填写，展示时过滤（数据层不动） */
+function nonEmptyItems(receipt) {
+  return (receipt.items || []).filter(it => String(it.text || '').trim() !== '');
+}
+
+/* LIST 墙已归档收据 DOM：复用 .roam-receipt 体系（上下锯齿撕边、无条码、ChangBanDianSong 字体），
+   宽度沿用清单墙收据宽度 min(280px, 68vw)。条目带固定"不"字前缀。 */
+function buildArchivedReceiptDom(receipt, index) {
+  const el = document.createElement('div');
+  el.className = 'roam-receipt roam-on-wall';
+
+  const brand = document.createElement('div'); brand.className = 'rr-brand';
+  brand.textContent = 'STOP-DOING LIST'; el.appendChild(brand);
+
+  const title = document.createElement('div'); title.className = 'rr-title';
+  title.textContent = 'Day Receipt'; el.appendChild(title);
+
+  const dt = document.createElement('div'); dt.className = 'rr-datetime';
+  dt.textContent = formatDateUS(receipt.date) + ' · ' + formatTime(receipt.createdAt);
+  el.appendChild(dt);
+
+  const order = document.createElement('div'); order.className = 'rr-order';
+  order.textContent = 'ORDER #' + String(receipt.orderNum || index + 1).padStart(4, '0');
+  el.appendChild(order);
+
+  const d1 = document.createElement('div'); d1.className = 'rr-divider'; el.appendChild(d1);
+
+  const items = document.createElement('div'); items.className = 'rr-items';
+  const shown = nonEmptyItems(receipt);
+  shown.forEach((it, i) => {
+    const row = document.createElement('div');
+    row.className = 'rr-item' + (it.finished ? ' finished' : '');
+    const idx = document.createElement('span'); idx.className = 'rr-item-index';
+    idx.textContent = String(i + 1).padStart(2, '0');
+    const txt = document.createElement('span'); txt.className = 'rr-item-text';
+    txt.textContent = withNotPrefix(it.text || '');
+    row.appendChild(idx); row.appendChild(txt);
+    items.appendChild(row);
+  });
+  el.appendChild(items);
+
+  const d2 = document.createElement('div'); d2.className = 'rr-divider'; el.appendChild(d2);
+
+  const fin = shown.filter(i => i.finished).length;
+  const tot = shown.length;
+  const footer = document.createElement('div'); footer.className = 'rr-footer';
+  footer.textContent = (fin === tot && tot > 0 ? 'GOOOOOD !' : 'HAVE A NICE DAY.');
+  el.appendChild(footer);
+
+  const bc = document.createElement('div'); bc.className = 'rr-barcode'; el.appendChild(bc);
+
+  // 全部完成 → 方形 Completed 印章（盖章落下动画由 .drop 类触发）
+  if (isAllFinished(receipt)) {
+    const stamp = document.createElement('div');
+    stamp.className = 'completed-stamp';
+    stamp.textContent = 'Completed';
+    el.appendChild(stamp);
+  }
+
+  return el;
+}
+
+/* ===================== 长按手势：下拉归档 / 上划撤销 =====================
+   目标元素：整张 .receipt-wrap。激活前 touch-action: pan-y 不挡滚动；激活后才阻止默认滚动。
+   不破坏条目行点击放大（点击位移 < 阈值且未长按 → 不进入拖拽）。
+   修复要点：
+   1) pointerdown 即 setPointerCapture —— 否则指针移出 wrap 后 pointerup 丢失，手势整个失效；
+   2) 激活时内联 animation:none —— 入场动画 receiptSlide/receiptDrop 是 fill:both，
+      完成后仍压制内联 transform，导致收据不跟手；
+   3) 移动端 touch-action 在手势开始时被锁定，激活后再改 CSS 已来不及，
+      用非 passive 的 touchmove + preventDefault 阻止浏览器接管滚动；
+   4) 手势结束后抑制 click —— 避免松手误触条目放大编辑。 */
+function attachReceiptGesture(wrap, receipt) {
+  let longPressTimer = null;
+  let activated = false;
+  let startY = 0, startX = 0;
+  let lastDy = 0;
+  let connectorEl = null;
+  let suppressClick = false;
+  let activePointerId = null;
+
+  const HOLD_MS = 300;
+  const THRESHOLD_PX = 100;
+
+  function clearLongPress() {
+    if (longPressTimer) { clearTimeout(longPressTimer); longPressTimer = null; }
+  }
+
+  function findConnector() {
+    return wrap.querySelector('.receipt-connector');
+  }
+
+  function onPointerDown(e) {
+    // 已在拖拽动画/盖章中 → 忽略；非主指针 / 鼠标非左键 → 忽略
+    if (wrap.classList.contains('gesture-busy')) return;
+    if (!e.isPrimary) return;
+    if (e.pointerType === 'mouse' && e.button !== 0) return;
+    activated = false;
+    lastDy = 0;
+    startX = e.clientX;
+    startY = e.clientY;
+    connectorEl = findConnector();
+    // 不在 down 时立即 capture：否则 pointerup 被重定向到 wrap，
+    // click 派发到 wrap 与 row 的公共祖先，row 的 click 监听器永远收不到（条目放大打不开）。
+    // capture 推迟到长按激活之后（见下方 timer 回调）。
+    activePointerId = e.pointerId;
+    clearLongPress();
+    longPressTimer = setTimeout(() => {
+      activated = true;
+      // 长按激活后才捕获指针：拖拽跟手、移出 wrap 不丢事件
+      try { wrap.setPointerCapture(activePointerId); } catch (_) {}
+      // 杀掉 fill:both 的入场动画（receiptSlide / receiptDrop），
+      // 否则已完成的动画在级联中压过内联 transform，收据不跟手
+      wrap.style.animation = 'none';
+      wrap.classList.add('gesture-activated');
+      try { navigator.vibrate(10); } catch (_) {}
+    }, HOLD_MS);
+  }
+
+  function onPointerMove(e) {
+    if (!activated) {
+      // 未激活时若手指明显移动则取消长按（视为页面滚动）
+      const dx = e.clientX - startX;
+      const dy = e.clientY - startY;
+      if (Math.abs(dy) > 15 || Math.abs(dx) > 15) clearLongPress();
+      return;
+    }
+    const dy = e.clientY - startY;
+    lastDy = dy;
+    // 已归档收据只允许向上划（撤销）；未归档只允许向下拉（归档）
+    if (receipt.archived) {
+      // 向上划跟随（dy 为负）
+      const follow = Math.min(0, dy);
+      wrap.style.transform = 'translateY(' + follow + 'px)';
+    } else {
+      // 向下拉跟随
+      const follow = Math.max(0, dy);
+      wrap.style.transform = 'translateY(' + follow + 'px)';
+      // connector 预兆：拉扯越大越淡
+      if (connectorEl) {
+        const ratio = Math.min(1, follow / THRESHOLD_PX);
+        connectorEl.style.opacity = String(1 - ratio * 0.7);
+      }
+    }
+    e.preventDefault();
+  }
+
+  function onPointerUp() {
+    clearLongPress();
+    activePointerId = null; // capture 在 pointerup 后由浏览器自动释放，无需手动 release
+    if (!activated) return;
+    activated = false;
+    suppressClick = true; // 本次是手势而非点击，抑制随之而来的 click（防误开条目放大）
+    wrap.classList.remove('gesture-activated');
+
+    const delta = receipt.archived ? -lastDy : lastDy; // 归一化为"正向位移"
+    if (delta >= THRESHOLD_PX) {
+      // 达阈值 → 执行
+      wrap.style.transform = '';
+      if (connectorEl) connectorEl.style.opacity = '';
+      if (receipt.archived) {
+        unarchiveReceipt(receipt);
+      } else {
+        archiveWithAnimation(wrap, receipt);
+      }
+    } else {
+      // 不足 → 回弹
+      wrap.style.transition = 'transform 0.25s ease-out';
+      wrap.style.transform = '';
+      if (connectorEl) {
+        connectorEl.style.transition = 'opacity 0.25s ease-out';
+        connectorEl.style.opacity = '';
+        setTimeout(() => { if (connectorEl) connectorEl.style.transition = ''; }, 280);
+      }
+      setTimeout(() => { wrap.style.transition = ''; }, 280);
+    }
+  }
+
+  wrap.addEventListener('pointerdown', onPointerDown);
+  wrap.addEventListener('pointermove', onPointerMove);
+  wrap.addEventListener('pointerup', onPointerUp);
+  wrap.addEventListener('pointercancel', () => {
+    clearLongPress();
+    activePointerId = null;
+    if (activated) {
+      activated = false;
+      suppressClick = true;
+      wrap.classList.remove('gesture-activated');
+      wrap.style.transition = 'transform 0.25s ease-out';
+      wrap.style.transform = '';
+      if (connectorEl) connectorEl.style.opacity = '';
+      setTimeout(() => { wrap.style.transition = ''; }, 280);
+    }
+  });
+  // 屏蔽原生长按菜单：否则移动端 ~500ms 时触发 contextmenu → pointercancel → 长按计时器被清
+  wrap.addEventListener('contextmenu', (e) => { e.preventDefault(); });
+  // 移动端兜底：激活后 preventDefault 第一个 touchmove，浏览器就不会接管滚动
+  // （touch-action 在手势开始时被锁定，激活后再改 CSS touch-action 已无效）
+  wrap.addEventListener('touchmove', function (e) {
+    if (activated) e.preventDefault();
+  }, { passive: false });
+  // 手势（或取消）后的那一次 click 直接吃掉，不传给条目行
+  wrap.addEventListener('click', function (e) {
+    if (suppressClick) {
+      suppressClick = false;
+      e.preventDefault();
+      e.stopPropagation();
+    }
+  }, true);
+}
+
+/* 归档 + 撕纸动效 + 形态切换 + 全完成盖章 */
+function archiveWithAnimation(wrap, receipt) {
+  if (receipt.archived) return;
+  wrap.classList.add('gesture-busy');
+  // 1. 撕纸反馈：快速小幅抖动 + 向下轻微抽离后回位
+  wrap.classList.add('tearing');
+  try { navigator.vibrate(15); } catch (_) {}
+  setTimeout(() => {
+    wrap.classList.remove('tearing');
+    // 2. 写入归档数据（复用 archiveReceipt 的数据流，但不调用其内部 renderReceiptWall，
+    //    改为就地形态切换以保留动画上下文）
+    receipt.archived = true;
+    receipt.archivedAt = Date.now();
+    appData.archives.push({ ...receipt, archivedAt: receipt.archivedAt });
+    saveData(appData);
+
+    const allDone = isAllFinished(receipt);
+    // 3. 就地切换为撕下来的单张形态
+    wrap.innerHTML = '';
+    wrap.classList.add('archived');
+    const archivedEl = buildArchivedReceiptDom(receipt, parseInt(wrap.dataset.receiptIndex, 10) || 0);
+    wrap.appendChild(archivedEl);
+    // 移除前一张收据的 connector（前一张 wrap 的最后一个子元素若是 .receipt-connector），
+    // 避免已归档收据与相邻收据之间残留连接段
+    const prevWrap = wrap.previousElementSibling;
+    if (prevWrap) {
+      const prevConn = prevWrap.querySelector('.receipt-connector');
+      if (prevConn) prevConn.remove();
+    }
+    window.dispatchEvent(new CustomEvent('sdl:archived', { detail: { receiptIndex: parseInt(wrap.dataset.receiptIndex, 10) || 0 } }));
+
+    // 4. 全完成 → 盖章动画
+    if (allDone) {
+      const stamp = archivedEl.querySelector('.completed-stamp');
+      if (stamp) {
+        // 先隐藏默认显形态，避免动画起手前闪一下
+        stamp.style.opacity = '0';
+        // 下一帧触发落下动画（动画 0% 关键帧接管 opacity:0）
+        requestAnimationFrame(() => {
+          stamp.style.opacity = '';
+          stamp.classList.add('drop');
+        });
+      }
+      // 盖章停留约 600ms 后解除 busy
+      setTimeout(() => {
+        wrap.classList.remove('gesture-busy');
+      }, 700);
+    } else {
+      // 未全完成：无章，直接解除
+      setTimeout(() => {
+        wrap.classList.remove('gesture-busy');
+      }, 150);
+    }
+    // 注意：不调用 renderReceiptWall() —— 就地切换已足够，
+    // connector 已随 wrap.innerHTML='' 清除；下一张收据若未归档会保留自己的 connector。
+    // 但需修正相邻已归档收据的间距：通过 CSS .receipt-wrap.archived + .receipt-wrap 已处理。
+  }, 200); // 撕纸抖动约 150ms，留 50ms 余量
+}
+
+/* 撤销归档：恢复为普通连续小票形态（含 connector），从 appData.archives 中精确移除一份 */
+function unarchiveReceipt(receipt) {
+  if (!receipt.archived) return;
+  receipt.archived = false;
+  delete receipt.archivedAt;
+  // 精确移除 archives 中最近的一份匹配（按 id 找到后仅移除一个，避免误删其他归档）
+  const rid = receipt.id;
+  const idx = appData.archives.findIndex(a => a.id === rid);
+  if (idx >= 0) appData.archives.splice(idx, 1);
+  saveData(appData);
+  window.dispatchEvent(new CustomEvent('sdl:unarchived', { detail: { receiptIndex: appData.receipts.indexOf(receipt) } }));
   renderReceiptWall();
 }
 
@@ -681,399 +1177,13 @@ function carryOverUnarchived() {
   }
 }
 
-/* ===================== 票夹回顾（像素文件夹 + 飞出小票）===================== */
-let archiveOpened = false;
-let archiveCollectBtn = null;
-
-function drawPixelFolder(canvas) {
-  if (!canvas) return;
-  const ctx = canvas.getContext('2d');
-  const s = 3; // 每个像素放大3倍 → canvas 96x80 显示 32x~27 像素
-  ctx.clearRect(0, 0, canvas.width, canvas.height);
-
-  // 颜色定义
-  const BLUE = '#3B7BC0';
-  const BLUE_LIGHT = '#5A9AD6';
-  const BLACK = '#1a1a1a';
-  const RED = '#E53935';
-  const RED_LIGHT = '#FF8A80';
-  const RED_DARK = '#8B1A1A';
-
-  // 像素绘制函数
-  function px(x, y, color) {
-    ctx.fillStyle = color;
-    ctx.fillRect(x * s, y * s, s, s);
-  }
-
-  // 文件夹 Tab（标签页部分）
-  const tabPixels = [
-    // tab 外框
-    [1,0,BLACK],[2,0,BLACK],[3,0,BLACK],[4,0,BLACK],[5,0,BLACK],[6,0,BLACK],[7,0,BLACK],[8,0,BLACK],[9,0,BLACK],[10,0,BLACK],[11,0,BLACK],[12,0,BLACK],[13,0,BLACK],
-    [1,1,BLACK],[2,1,BLUE_LIGHT],[3,1,BLUE_LIGHT],[4,1,BLUE_LIGHT],[5,1,BLUE_LIGHT],[6,1,BLUE_LIGHT],[7,1,BLUE_LIGHT],[8,1,BLUE_LIGHT],[9,1,BLUE_LIGHT],[10,1,BLUE_LIGHT],[11,1,BLUE_LIGHT],[12,1,BLUE_LIGHT],[13,1,BLACK],
-    [1,2,BLACK],[2,2,BLUE_LIGHT],[3,2,BLUE_LIGHT],[4,2,BLUE_LIGHT],[5,2,BLUE_LIGHT],[6,2,BLUE_LIGHT],[7,2,BLUE_LIGHT],[8,2,BLUE_LIGHT],[9,2,BLUE_LIGHT],[10,2,BLUE_LIGHT],[11,2,BLUE_LIGHT],[12,2,BLUE_LIGHT],[13,2,BLACK],
-    [1,3,BLACK],[2,3,BLACK],[3,3,BLACK],[4,3,BLACK],[5,3,BLACK],[6,3,BLACK],[7,3,BLACK],[8,3,BLACK],[9,3,BLACK],[10,3,BLACK],[11,3,BLACK],[12,3,BLACK],[13,3,BLACK],
-  ];
-  tabPixels.forEach(([x, y, c]) => px(x, y, c));
-
-  // 文件夹主体
-  const bodyPixels = [
-    // 第4行（与tab底部连接）
-    [0,4,BLACK],[1,4,BLACK],[2,4,BLACK],[3,4,BLUE],[4,4,BLUE],[5,4,BLUE],[6,4,BLUE],[7,4,BLUE],[8,4,BLUE],[9,4,BLUE],[10,4,BLUE],[11,4,BLUE],[12,4,BLUE],[13,4,BLACK],[14,4,BLACK],[15,4,BLACK],[16,4,BLACK],[17,4,BLACK],[18,4,BLACK],[19,4,BLACK],[20,4,BLACK],[21,4,BLACK],[22,4,BLACK],[23,4,BLACK],[24,4,BLACK],[25,4,BLACK],[26,4,BLACK],[27,4,BLACK],[28,4,BLACK],[29,4,BLACK],[30,4,BLACK],[31,4,BLACK],
-    // 第5行
-    [0,5,BLACK],[1,5,BLUE],[2,5,BLUE],[3,5,BLUE],[4,5,BLUE],[5,5,BLUE],[6,5,BLUE],[7,5,BLUE],[8,5,BLUE],[9,5,BLUE],[10,5,BLUE],[11,5,BLUE],[12,5,BLUE],[13,5,BLUE],[14,5,BLUE],[15,5,BLUE],[16,5,BLUE],[17,5,BLUE],[18,5,BLUE],[19,5,BLUE],[20,5,BLUE],[21,5,BLUE],[22,5,BLUE],[23,5,BLUE],[24,5,BLUE],[25,5,BLUE],[26,5,BLUE],[27,5,BLUE],[28,5,BLUE],[29,5,BLUE],[30,5,BLUE],[31,5,BLACK],
-    // 第6~20行（主体内容区域）
-  ];
-
-  // 生成中间行
-  for (let row = 6; row <= 20; row++) {
-    bodyPixels.push([0, row, BLACK]);
-    for (let col = 1; col <= 30; col++) {
-      bodyPixels.push([col, row, BLUE]);
-    }
-    bodyPixels.push([31, row, BLACK]);
-  }
-
-  // 第21行（底部）
-  bodyPixels.push([0,21,BLACK]);
-  for (let col = 1; col <= 30; col++) {
-    bodyPixels.push([col, 21, BLUE]);
-  }
-  bodyPixels.push([31,21,BLACK]);
-
-  // 第22行（底部边框高光）
-  bodyPixels.push([0,22,BLACK]);
-  for (let col = 1; col <= 30; col++) {
-    bodyPixels.push([col, 22, BLACK]);
-  }
-  bodyPixels.push([31,22,BLACK]);
-
-  bodyPixels.forEach(([x, y, c]) => px(x, y, c));
-
-  // 心形图标（居中在文件夹主体上）
-  const heartCx = 14, heartCy = 11;
-  const heart = [
-    [0,-2,RED],[1,-2,RED_LIGHT],[3,-2,RED],[4,-2,RED],
-    [-1,-1,RED],[0,-1,RED_LIGHT],[1,-1,RED],[2,-1,RED],[3,-1,RED],[4,-1,RED],[5,-1,RED_DARK],
-    [-2,0,RED],[-1,0,RED_LIGHT],[0,0,RED],[1,0,RED],[2,0,RED],[3,0,RED],[4,0,RED],[5,0,RED],[6,0,RED_DARK],
-    [-2,1,RED],[-1,1,RED],[0,1,RED],[1,1,RED],[2,1,RED],[3,1,RED],[4,1,RED],[5,1,RED],[6,1,RED_DARK],
-    [-1,2,RED],[0,2,RED],[1,2,RED],[2,2,RED],[3,2,RED],[4,2,RED],[5,2,RED_DARK],
-    [0,3,RED],[1,3,RED],[2,3,RED],[3,3,RED],[4,3,RED_DARK],
-    [1,4,RED],[2,4,RED],[3,4,RED_DARK],
-    [2,5,RED_DARK],
-  ];
-  heart.forEach(([dx, dy, c]) => px(heartCx + dx, heartCy + dy, c));
-}
-
+/* ===================== 票夹回顾（门后空间 · Roam）===================== */
 function renderArchive() {
-  if (!flyingTickets) flyingTickets = document.getElementById('flying-tickets');
-  if (!archiveEmpty) archiveEmpty = document.getElementById('archive-empty');
-  if (!folderEl) folderEl = document.getElementById('pixel-folder');
-  if (!folderCanvas) folderCanvas = document.getElementById('folder-canvas');
-  if (!folderLabel) folderLabel = document.getElementById('folder-label');
-
-  // 绘制像素文件夹
-  drawPixelFolder(folderCanvas);
-
-  const sorted = [...appData.archives].sort((a, b) => b.archivedAt - a.archivedAt);
-  if (archiveEmpty) archiveEmpty.classList.toggle('visible', sorted.length === 0);
-
-  // 没有归档时隐藏文件夹
-  // （始终显示文件夹）
-  if (flyingTickets) flyingTickets.innerHTML = '';
-
-  // 重置状态
-  archiveOpened = false;
-  if (folderEl) folderEl.classList.remove('opened');
-
-  // 更新文件夹标签
-  if (folderLabel) {
-    folderLabel.textContent = sorted.length > 0
-      ? `${sorted.length} 份归档 · 点击打开`
-      : '暂无归档 · 点击查看';
+  // 进入归档页：交给门后空间模块（门序列 + 3D 漫游 + Roam/Browse）
+  // 数据层（appData.archives）只读；年份选择与过滤在 ArchiveSpace 内部完成。
+  if (window.ArchiveSpace && typeof window.ArchiveSpace.enter === 'function') {
+    window.ArchiveSpace.enter(appData.archives);
   }
-
-  // 移除旧的收回按钮
-  if (archiveCollectBtn) { archiveCollectBtn.remove(); archiveCollectBtn = null; }
-
-  // 文件夹点击事件
-  if (folderEl) {
-    // 克隆替换以移除旧事件
-    const newFolder = folderEl.cloneNode(true);
-    folderEl.parentNode.replaceChild(newFolder, folderEl);
-    folderEl = newFolder;
-    folderCanvas = document.getElementById('folder-canvas');
-    folderLabel = document.getElementById('folder-label');
-    drawPixelFolder(folderCanvas);
-
-    newFolder.addEventListener('click', () => {
-      if (archiveOpened) return;
-      archiveOpened = true;
-      folderEl.classList.add('opened');
-      flyOutTickets(sorted);
-    });
-  }
-}
-
-/* ===================== 轮播逻辑 ===================== */
-let carouselArchives = [];
-let carouselIndex = 0;
-let currentCarouselTicket = null;
-let carouselPrevBtn = null;
-let carouselNextBtn = null;
-let carouselIndicator = null;
-
-function flyOutTickets(archives) {
-  if (!flyingTickets) flyingTickets = document.getElementById('flying-tickets');
-  flyingTickets.innerHTML = '';
-
-  if (archives.length === 0) return;
-
-  carouselArchives = archives;
-  carouselIndex = 0;
-
-  // 创建轮播 wrapper
-  const wrapper = document.createElement('div');
-  wrapper.className = 'carousel-wrapper';
-
-  // 左右按钮
-  carouselPrevBtn = document.createElement('button');
-  carouselPrevBtn.className = 'carousel-btn prev';
-  carouselPrevBtn.textContent = '‹';
-  carouselPrevBtn.disabled = true;
-  carouselPrevBtn.addEventListener('click', () => switchCarousel(-1));
-
-  carouselNextBtn = document.createElement('button');
-  carouselNextBtn.className = 'carousel-btn next';
-  carouselNextBtn.textContent = '›';
-  carouselNextBtn.disabled = archives.length <= 1;
-  carouselNextBtn.addEventListener('click', () => switchCarousel(1));
-
-  // 页码
-  carouselIndicator = document.createElement('div');
-  carouselIndicator.className = 'carousel-indicator';
-  carouselIndicator.textContent = `1 / ${archives.length}`;
-
-  wrapper.appendChild(carouselPrevBtn);
-  wrapper.appendChild(carouselNextBtn);
-  wrapper.appendChild(carouselIndicator);
-
-  // 创建第一张卡片并播放入场动画
-  currentCarouselTicket = createArchiveTicket(archives[0], 0);
-  currentCarouselTicket.classList.add('fly-in-carousel');
-  wrapper.appendChild(currentCarouselTicket);
-
-  flyingTickets.appendChild(wrapper);
-
-  // 显示轮播区域
-  flyingTickets.classList.add('active');
-
-  // 添加收回按钮
-  archiveCollectBtn = document.createElement('button');
-  archiveCollectBtn.className = 'archive-collect-btn';
-  archiveCollectBtn.textContent = 'COLLECT ALL';
-  archiveCollectBtn.addEventListener('click', collectTickets);
-  const area = document.getElementById('archive-folder-area');
-  if (area) area.appendChild(archiveCollectBtn);
-  setTimeout(() => archiveCollectBtn && archiveCollectBtn.classList.add('visible'), 600);
-}
-
-function switchCarousel(direction) {
-  if (!flyingTickets || carouselArchives.length === 0) return;
-
-  const oldTicket = currentCarouselTicket;
-  if (!oldTicket) return;
-
-  const newIndex = carouselIndex + direction;
-  if (newIndex < 0 || newIndex >= carouselArchives.length) return;
-
-  carouselIndex = newIndex;
-
-  // 旧卡片滑出
-  oldTicket.classList.add(direction > 0 ? 'slide-left' : 'slide-right');
-
-  // 延迟后替换为新卡片
-  setTimeout(() => {
-    oldTicket.remove();
-
-    const wrapper = flyingTickets.querySelector('.carousel-wrapper');
-    if (!wrapper) return;
-
-    currentCarouselTicket = createArchiveTicket(carouselArchives[carouselIndex], carouselIndex);
-    currentCarouselTicket.classList.add(direction > 0 ? 'slide-in-right' : 'slide-in-left');
-    wrapper.appendChild(currentCarouselTicket);
-
-    // 更新按钮和页码
-    if (carouselPrevBtn) carouselPrevBtn.disabled = carouselIndex === 0;
-    if (carouselNextBtn) carouselNextBtn.disabled = carouselIndex === carouselArchives.length - 1;
-    if (carouselIndicator) carouselIndicator.textContent = `${carouselIndex + 1} / ${carouselArchives.length}`;
-  }, 280);
-}
-
-function createArchiveTicket(arc, index) {
-  const ticket = document.createElement('div');
-  ticket.className = 'archive-ticket';
-
-  const finishedCount = arc.items.filter(it => it.finished).length;
-  const total = arc.items.length;
-
-  // 顶部波浪
-  const waveTop = document.createElement('div');
-  waveTop.className = 'archive-ticket-wave-top';
-  ticket.appendChild(waveTop);
-
-  // 简洁视图：日期 + 条形码
-  const simpleView = document.createElement('div');
-  simpleView.className = 'archive-ticket-simple';
-  simpleView.innerHTML = `
-    <div class="archive-ticket-simple-date">${formatDateZH(arc.date)}</div>
-    <div class="archive-ticket-simple-barcode"></div>
-  `;
-  ticket.appendChild(simpleView);
-
-  // 详细视图（默认隐藏）
-  const detailView = document.createElement('div');
-  detailView.className = 'archive-ticket-detail';
-
-  // 顶部条形码
-  const topBarcode = document.createElement('div');
-  topBarcode.className = 'archive-ticket-top-barcode';
-  detailView.appendChild(topBarcode);
-
-  // Header
-  const header = document.createElement('div');
-  header.className = 'archive-ticket-header';
-  header.innerHTML = `
-    <span class="archive-ticket-tag">STOP DOING LIST</span>
-    <div class="archive-ticket-title">Day Receipt</div>
-    <div class="archive-ticket-date">${formatDateZH(arc.date)} · #${String(index + 1).padStart(3, '0')}</div>
-  `;
-  detailView.appendChild(header);
-
-  // Divider
-  const divider = document.createElement('div');
-  divider.className = 'archive-ticket-divider';
-  detailView.appendChild(divider);
-
-  // Items
-  const itemsEl = document.createElement('div');
-  itemsEl.className = 'archive-ticket-items';
-  arc.items.forEach((it, i) => {
-    const itemEl = document.createElement('div');
-    itemEl.className = 'archive-ticket-item';
-    const text = it.text || '';
-    itemEl.innerHTML = `
-      <span class="archive-ticket-item-index">${String(i + 1).padStart(2, '0')}</span>
-      <span class="archive-ticket-item-text${text ? '' : ' empty'}">${escapeHtml(text) || '（空白）'}</span>
-    `;
-    itemsEl.appendChild(itemEl);
-  });
-  detailView.appendChild(itemsEl);
-
-  // Footer
-  const footer = document.createElement('div');
-  footer.className = 'archive-ticket-footer';
-  footer.textContent = finishedCount === total && total > 0 ? 'GOOOOOD !' : 'ARCHIVED';
-  detailView.appendChild(footer);
-
-  // Bottom barcode
-  const bottomBarcode = document.createElement('div');
-  bottomBarcode.className = 'archive-ticket-bottom-barcode';
-  detailView.appendChild(bottomBarcode);
-
-  ticket.appendChild(detailView);
-
-  // 底部波浪
-  const waveBottom = document.createElement('div');
-  waveBottom.className = 'archive-ticket-wave';
-  ticket.appendChild(waveBottom);
-
-  // 点击切换展开/收起详细视图
-  ticket.addEventListener('click', (e) => {
-    e.stopPropagation();
-    // 如果已经展开，收起
-    if (ticket.classList.contains('expanded')) {
-      ticket.classList.remove('expanded');
-      return;
-    }
-    // 收起其他已展开的卡片
-    flyingTickets.querySelectorAll('.archive-ticket.expanded').forEach(t => {
-      t.classList.remove('expanded');
-    });
-    // 展开当前
-    ticket.classList.add('expanded');
-    // 提升z-index
-    ticket.style.zIndex = 100;
-    // 展开后再次点击外部收起
-    setTimeout(() => {
-      const closeHandler = (ev) => {
-        if (!ticket.contains(ev.target)) {
-          ticket.classList.remove('expanded');
-          ticket.style.zIndex = '';
-          document.removeEventListener('pointerdown', closeHandler);
-        }
-      };
-      document.addEventListener('pointerdown', closeHandler);
-    }, 10);
-  });
-
-  return ticket;
-}
-
-function collectTickets() {
-  if (!flyingTickets) return;
-
-  // 淡出轮播区域
-  flyingTickets.classList.remove('active');
-
-  // 重置轮播状态
-  carouselArchives = [];
-  carouselIndex = 0;
-  currentCarouselTicket = null;
-  carouselPrevBtn = null;
-  carouselNextBtn = null;
-  carouselIndicator = null;
-
-  setTimeout(() => {
-    flyingTickets.innerHTML = '';
-    if (folderEl) folderEl.classList.remove('opened');
-    archiveOpened = false;
-    if (archiveCollectBtn) { archiveCollectBtn.remove(); archiveCollectBtn = null; }
-    renderArchive();
-  }, 500);
-}
-
-function showReceiptModal(receipt) {
-  const wrap = document.createElement('div');
-  wrap.style.cssText = 'position:fixed;inset:0;z-index:90;background:rgba(0,0,0,0.85);display:flex;align-items:center;justify-content:center;padding:20px;overflow:auto;';
-  const inner = document.createElement('div');
-  inner.style.cssText = 'max-width:520px;width:100%;transform:scale(0.95);animation:receiptSlide 0.4s ease forwards;';
-  inner.innerHTML = `
-    <div class="receipt" style="padding:0 28px 38px">
-      <div class="receipt-top-barcode" style="margin:0 10px"></div>
-      <div class="receipt-wavy-divider"></div>
-      <div class="receipt-header">
-        <span class="receipt-tag">ARCHIVED RECEIPT</span>
-        <h3 class="receipt-title">Day Receipt</h3>
-        <div class="receipt-date">${formatDateZH(receipt.date)}</div>
-      </div>
-      ${receipt.items.map((it, i) => `
-        <div class="receipt-item-wrap${it.finished ? ' finished' : ''}">
-          <div class="receipt-item" style="cursor:default;padding:10px 12px">
-            <span class="receipt-item-index">${String(i + 1).padStart(2, '0')}</span>
-            <div class="receipt-item-text" style="border:none;cursor:default">${escapeHtml(it.text) || '<span style="color:#bbb">（空白）</span>'}</div>
-          </div>
-        </div>
-      `).join('')}
-      <div class="receipt-footer">
-        <div>${receipt.items.every(i => i.finished) ? 'GOOOOOD !' : 'ARCHIVED'}</div>
-        <div class="receipt-barcode"></div>
-      </div>
-      <div class="receipt-bottom-wave"></div>
-    </div>
-  `;
-  wrap.appendChild(inner);
-  wrap.addEventListener('click', e => { if (e.target === wrap) wrap.remove(); });
-  document.body.appendChild(wrap);
 }
 
 /* ===================== 时光机 ===================== */
@@ -1179,114 +1289,488 @@ if (addTodayBtn) addTodayBtn.addEventListener('click', () => {
 
 if (badInput) badInput.addEventListener('keydown', e => { if (e.key === 'Enter' && predictBtn) predictBtn.click(); });
 
-/* ===================== 数据统计 ===================== */
-function renderStats() {
-  const now = new Date();
-  const counts = { today: 0, week: 0, month: 0, year: 0 };
-  const times = { today: 0, week: 0, month: 0, year: 0 };
-
-  const all = [...appData.receipts, ...appData.archives];
-  const seen = new Set();
-  const unique = [];
-
-  all.forEach(r => {
-    const key = r.date + r.id;
-    if (seen.has(key)) return;
-    seen.add(key);
-    unique.push(r);
-  });
-  unique.forEach(r => {
-    const [y, m, d] = r.date.split('-').map(Number);
-    const rDate = new Date(y, m - 1, d);
-    const finishedCount = r.items.filter(i => i.finished).length;
-    const savedMin = finishedCount * 25;
-
-    if (r.date === todayKey()) { counts.today += finishedCount; times.today += savedMin; }
-    const weekStart = new Date(now);
-    weekStart.setDate(now.getDate() - now.getDay());
-    weekStart.setHours(0, 0, 0, 0);
-    if (rDate >= weekStart) { counts.week += finishedCount; times.week += savedMin; }
-    if (y === now.getFullYear() && m === now.getMonth() + 1) { counts.month += finishedCount; times.month += savedMin; }
-    if (y === now.getFullYear()) { counts.year += finishedCount; times.year += savedMin; }
-  });
-
-  updateStat('today', counts.today, times.today);
-  updateStat('week', counts.week, times.week);
-  updateStat('month', counts.month, times.month);
-  updateStat('year', counts.year, times.year);
-  renderTrendBars(unique, seen);
-}
-
-function updateStat(period, count, minutes) {
-  const elCount = document.getElementById(`stat-${period}-count`);
-  const elTime = document.getElementById(`stat-${period}-time`);
-  if (elCount) elCount.textContent = count;
-  const h = Math.floor(minutes / 60);
-  const m = minutes % 60;
-  if (elTime) elTime.textContent = `节省 ${h}h${m ? m + 'm' : ''}`;
-}
-
-function renderTrendBars(all, seen) {
-  const container = document.getElementById('trend-bars');
-  if (!container) return;
-  container.innerHTML = '';
-  const days = [];
-  for (let i = 29; i >= 0; i--) {
-    const d = new Date();
-    d.setDate(d.getDate() - i);
-    const key = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
-    days.push({ date: key, count: 0 });
+/* ===================== 时钟触发按钮：hover 逐帧动效（复刻 icon-hover-frames-demo.html 的 clock 逻辑） ===================== */
+(function () {
+  const clockBtn = document.getElementById('btn-predict');
+  const clockImg = document.getElementById('clock-predict-img');
+  if (!clockBtn || !clockImg) return;
+  const CLOCK_FRAMES = 48;
+  const CLOCK_FPS = 12;
+  const frames = [];
+  for (let i = 1; i <= CLOCK_FRAMES; i++) {
+    const im = new Image();
+    im.src = 'assets/icon-frames/clock/frame_' + String(i).padStart(3, '0') + '.png';
+    frames.push(im);
   }
-  const map = new Map();
-  all.forEach(r => {
-    if (!seen.has(r.date + r.id)) return;
-    map.set(r.date, (map.get(r.date) || 0) + r.items.filter(i => i.finished).length);
+  let timer = null;
+  let idx = 0;
+  clockBtn.addEventListener('mouseenter', function () {
+    idx = 0;
+    timer = setInterval(function () {
+      idx = (idx + 1) % CLOCK_FRAMES;
+      clockImg.src = frames[idx].src;
+    }, 1000 / CLOCK_FPS);
   });
-  days.forEach(d => { d.count = map.get(d.date) || 0; });
-  const max = Math.max(1, ...days.map(d => d.count));
-  days.forEach(d => {
-    const bar = document.createElement('div');
-    bar.className = 'trend-bar' + (d.count === 0 ? ' zero' : '');
-    bar.style.height = (Math.max(4, (d.count / max) * 100)) + '%';
-    bar.title = `${formatDateZH(d.date)}: ${d.count} 件`;
-    container.appendChild(bar);
+  clockBtn.addEventListener('mouseleave', function () {
+    if (timer) { clearInterval(timer); timer = null; }
+    idx = 0;
+    clockImg.src = frames[0].src;
   });
+})();
+
+/* ===================== 数据统计 ===================== */
+
+/* 节省时间估算：解析显式时长 → 按类型分类估算 → 兜底 */
+function estimateSavedMinutes(text) {
+  if (!text) return 25;
+  const t = text.trim();
+
+  // 1. 解析显式时长（如"30分钟""1小时""2h""45min""1.5h"）
+  const hourMatch = t.match(/(\d+(?:\.\d+)?)\s*(小时|h|hr|H)/);
+  if (hourMatch) return Math.round(parseFloat(hourMatch[1]) * 60);
+  const minMatch = t.match(/(\d+(?:\.\d+)?)\s*(分钟|min|m(?![a-z]))/i);
+  if (minMatch) return Math.round(parseFloat(minMatch[1]));
+
+  // 2. 按不做类型分类估算（基于关键词匹配，每类基准不同，加文本哈希微扰避免同质化）
+  const HABIT_TIME_RULES = [
+    { keywords: ['短视频', '刷视频', '刷手机', '刷抖音', '刷微博', '刷小红书', '刷朋友圈', '刷B站', '刷ins', '刷tiktok', '刷sns', '刷app', '无意义刷'], base: 35 },
+    { keywords: ['熬夜', '晚睡', '追剧', '追番', '追综艺', '追小说', '再看一集', '通宵', '不睡觉', '赖床'], base: 50 },
+    { keywords: ['零食', '奶茶', '外卖', '甜食', '蛋糕', '炸鸡', '烧烤', '喝饮料', '可乐', '夜宵', '加餐', '薯片', '饼干', '甜品', '巧克力'], base: 15 },
+    { keywords: ['购物', '逛', '买买买', '下单', '拼单', '种草', '拔草', '直播间', '促销', '打折', '满减', '秒杀', '清空购物车'], base: 20 },
+    { keywords: ['社交', '聚会', '消息', '聊天', '微信', '回复', '电话', '应酬', '饭局', '群聊', '群消息'], base: 45 },
+    { keywords: ['纠结', '犹豫', '选择困难', '想太多', '内耗', '焦虑', '担心', '胡思乱想', '过度思考', '完美主义', '拖延'], base: 25 },
+    { keywords: ['多任务', '同时', '并行', '切换', 'multitask', '一边', '三心二意', '分心', '打断'], base: 20 },
+    { keywords: ['抽烟', '吸烟', '喝酒', '酗酒', '烟', '酒', '啤酒', '白酒', '香烟'], base: 30 },
+  ];
+
+  let base = 25;
+  for (const rule of HABIT_TIME_RULES) {
+    if (rule.keywords.some(kw => t.includes(kw))) {
+      base = rule.base;
+      break;
+    }
+  }
+
+  // 3. 基于文本哈希加 ±5 分钟微扰，避免同质化
+  let hash = 0;
+  for (let i = 0; i < t.length; i++) hash = ((hash << 5) - hash + t.charCodeAt(i)) | 0;
+  const offset = (Math.abs(hash) % 11) - 5; // -5 ~ +5
+  return Math.max(5, base + offset);
+}
+
+/* ===================== DATA 页：维度×月份 热成像网格 ===================== */
+/* 12 维度（已删 财务规划/物质成瘾/亲密关系/职业工作）；命中数最高者胜出；全 0 命中兜底「时间管理」 */
+const DATA_DIMENSIONS = [
+  { name: '时间管理', keywords: ['拖延','截止','迟到','赶','来不及','磨蹭','等一下','计划打乱'] },
+  { name: '专注管理', keywords: ['多任务','切换','分心','打断','三心二意','一边','并行','走神','频繁看'] },
+  { name: '数字媒体', keywords: ['短视频','刷视频','刷手机','刷抖音','刷微博','刷小红书','刷朋友圈','刷B站','刷ins','tiktok','刷sns','刷app','滑动','无意义刷','游戏','看直播'] },
+  { name: '消费理财', keywords: ['购物','逛逛','买买买','下单','拼单','种草','拔草','直播间','促销','打折','满减','秒杀','清空购物车','囤货','退货'] },
+  { name: '睡眠作息', keywords: ['熬夜','晚睡','追剧','追番','追综艺','追小说','再看一集','通宵','不睡觉','赖床','早起失败','午睡'] },
+  { name: '饮食健康', keywords: ['零食','奶茶','外卖','甜食','蛋糕','炸鸡','烧烤','饮料','可乐','夜宵','加餐','薯片','饼干','甜品','巧克力','咖啡'] },
+  { name: '运动锻炼', keywords: ['久坐','不运动','瘫着','躺平','驼背','揉眼睛'] },
+  { name: '情绪管理', keywords: ['焦虑','烦躁','发脾气','生气','崩溃','情绪化','emo','暴躁'] },
+  { name: '心态思维', keywords: ['纠结','犹豫','选择困难','想太多','内耗','担心','胡思乱想','过度思考','完美主义','怕错','自我批评','回放','攀比','尴尬'] },
+  { name: '人际社交', keywords: ['社交','聚会','应酬','饭局','面子','拒绝','讨好','接话','回复消息','群聊','群消息'] },
+  { name: '学习成长', keywords: ['囤课','买书不读','收藏不学','半途而废'] },
+  { name: '环境秩序', keywords: ['不收拾','乱堆','桌面乱','房间乱','拖延整理'] },
+];
+const DATA_MONTH_ABBR = ['Jan.','Feb.','Mar.','Apr.','May.','Jun.','Jul.','Aug.','Sep.','Oct.','Nov.','Dec.'];
+/* 连续色谱锚点（t=v/10，值域 0~10；暖=高海拔，最右端新增黄 #FFC107） */
+const DATA_COLOR_STOPS = [
+  { t: 0.00, c: [31, 196, 212] },   /* 青 #1FC4D4 */
+  { t: 0.20, c: [61, 107, 208] },   /* 蓝 #3D6BD0 */
+  { t: 0.40, c: [107, 80, 188] },   /* 紫 #6B50BC */
+  { t: 0.60, c: [216, 64, 124] },   /* 品红 #D8407C */
+  { t: 0.80, c: [242, 56, 63] },    /* 红 #F2383F */
+  { t: 1.00, c: [255, 193, 7] },    /* 黄 #FFC107 */
+];
+/* 渲染列序（渲染层重排，不改 DATA_DIMENSIONS 原数组）；删去 学习成长(10)/环境秩序(11) 两列 */
+const DATA_COL_ORDER = [
+  0, 1,        /* 时间效率：时间管理、专注管理 */
+  2, 3, 9,     /* 数字生活：数字媒体、消费理财、人际社交 */
+  4, 5, 6,     /* 身体节律：睡眠作息、饮食健康、运动锻炼 */
+  7, 8         /* 内心秩序：情绪管理、心态思维 */
+];
+
+function classifyDimension(text) {
+  if (!text) return 0;
+  const t = text.trim();
+  let bestIdx = 0, bestHits = 0;
+  for (let i = 0; i < DATA_DIMENSIONS.length; i++) {
+    let hits = 0;
+    const kws = DATA_DIMENSIONS[i].keywords;
+    for (let k = 0; k < kws.length; k++) if (t.indexOf(kws[k]) >= 0) hits++;
+    if (hits > bestHits) { bestHits = hits; bestIdx = i; }
+  }
+  return bestIdx; /* 全 0 命中 → 0（时间管理）兜底 */
+}
+
+function getDataTier(minutes) {
+  if (minutes < 90) return 2;
+  if (minutes < 240) return 3;
+  if (minutes < 480) return 4;
+  return 5;
+}
+
+function renderDataGrid() {
+  const wrap = document.getElementById('data-scroll');
+  if (!wrap) return;
+  const archives = (appData.archives || []).slice();
+
+  /* 月份范围：最早归档月 → 当前月（过滤掉归档中超出当前月的未来月），逐月一行 */
+  const now = new Date();
+  const curMonth = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
+  const monthSet = new Set();
+  archives.forEach(r => {
+    if (!r.date) return;
+    const ym = r.date.slice(0, 7);
+    if (ym <= curMonth) monthSet.add(ym);   /* 仅取不晚于当前月 */
+  });
+  monthSet.add(curMonth);
+  const monthsAsc = [...monthSet].sort();                 /* 升序：最早→当前 */
+  const rowsTopDown = monthsAsc.slice().reverse();        /* 最新在最上 */
+  const validMonth = new Set(monthsAsc);
+
+  /* 聚合：某月×某维度 = {minutes, count}，仅 finished 条目，仅范围内月份 */
+  const cells = {};
+  archives.forEach(r => {
+    if (!r.date) return;
+    const month = r.date.slice(0, 7);
+    if (!validMonth.has(month)) return;                   /* 排除范围外的未来月 */
+    (r.items || []).forEach(it => {
+      if (!it || !it.finished) return;
+      const dim = classifyDimension(it.text);
+      const key = month + '|' + dim;
+      if (!cells[key]) cells[key] = { minutes: 0, count: 0 };
+      cells[key].minutes += estimateSavedMinutes(it.text);
+      cells[key].count += 1;
+    });
+  });
+
+  let maxMinutes = 0;
+  Object.values(cells).forEach(c => { if (c.minutes > maxMinutes) maxMinutes = c.minutes; });
+
+  /* 布局参数：10 列均匀铺排（无组缝，竖线等距 COL_W） */
+  const COL_W = 72, ROW_H = 68, YAXIS_W = 104, XAXIS_H = 150;
+  const COL_N = DATA_COL_ORDER.length;                     /* 10 */
+  /* 每渲染列的 x 偏移（均匀，无组缝） */
+  const colX = [];
+  for (let i = 0; i < COL_N; i++) colX[i] = i * COL_W;
+  const N = rowsTopDown.length;
+  const gridW = COL_N * COL_W;                              /* 10*COL_W */
+  const gridH = N * ROW_H;
+
+  /* 年份分组（按 rowsTopDown 顺序，连续同年为组，用于 [ 括号）*/
+  const yearGroups = [];
+  rowsTopDown.forEach((ym, i) => {
+    const y = ym.slice(0, 4);
+    const last = yearGroups[yearGroups.length - 1];
+    if (!last || last.year !== y) yearGroups.push({ year: y, start: i, count: 1 });
+    else last.count++;
+  });
+
+  /* 连续五色色谱插值：t∈[0,1] → {r,g,b,css}，5 锚点分段线性（无 gamma，必要时再压缩） */
+  function dataColor(t) {
+    const tt = Math.max(0, Math.min(1, t));
+    const s = DATA_COLOR_STOPS;
+    for (let i = 0; i < s.length - 1; i++) {
+      const a = s[i], b = s[i + 1];
+      if (tt >= a.t && tt <= b.t) {
+        const k = (tt - a.t) / (b.t - a.t);
+        const r = Math.round(a.c[0] + (b.c[0] - a.c[0]) * k);
+        const g = Math.round(a.c[1] + (b.c[1] - a.c[1]) * k);
+        const bl = Math.round(a.c[2] + (b.c[2] - a.c[2]) * k);
+        return { r, g, b: bl, css: `rgb(${r},${g},${bl})` };
+      }
+    }
+    const last = s[s.length - 1].c;
+    return { r: last[0], g: last[1], b: last[2], css: `rgb(${last.join(',')})` };
+  }
+
+  /* 单层画布：轴标签并入 SVG，网格内容统一偏移 (OX, OY)；
+     OY < XAXIS_H：网格上移，横轴维度文字保持 XAXIS_H/2 原位不动 */
+  const OX = YAXIS_W, OY = XAXIS_H - 30;
+  const totalW = YAXIS_W + gridW, totalH = OY + gridH;
+  const svgNS = 'http://www.w3.org/2000/svg';
+  const svg = document.createElementNS(svgNS, 'svg');
+  svg.setAttribute('class', 'data-grid-svg');
+  svg.setAttribute('width', totalW);
+  svg.setAttribute('height', totalH);
+  svg.setAttribute('viewBox', `0 0 ${totalW} ${totalH}`);
+  svg.style.overflow = 'visible';   /* 大圆溢出 viewBox 不裁切 */
+
+  /* defs：地形图与等高线无滤镜依赖，无图例渐变则留空 */
+  const defs = document.createElementNS(svgNS, 'defs');
+  svg.appendChild(defs);
+
+  /* 底部网格垫底（地形图之下）：竖线在每列中心、横线在每行中心，交点=横纵坐标交点；暗灰虚线 */
+  const underG = document.createElementNS(svgNS, 'g');
+  underG.setAttribute('class', 'data-undergrid');
+  underG.setAttribute('transform', `translate(${OX},${OY})`);
+  for (let i = 0; i < COL_N; i++) {
+    const x = colX[i] + COL_W / 2;
+    const ln = document.createElementNS(svgNS, 'line');
+    ln.setAttribute('x1', x); ln.setAttribute('y1', 0);
+    ln.setAttribute('x2', x); ln.setAttribute('y2', gridH);
+    underG.appendChild(ln);
+  }
+  for (let i = 0; i < N; i++) {
+    const y = i * ROW_H + ROW_H / 2;
+    const ln = document.createElementNS(svgNS, 'line');
+    ln.setAttribute('x1', 0); ln.setAttribute('y1', y);
+    ln.setAttribute('x2', gridW); ln.setAttribute('y2', y);
+    underG.appendChild(ln);
+  }
+  svg.appendChild(underG);
+
+  /* X 轴：维度名竖排（真竖版文字 writing-mode，非旋转）；列居中，垂直居中于顶部 150px 标签带 */
+  const axisXG = document.createElementNS(svgNS, 'g');
+  axisXG.setAttribute('class', 'data-svg-axis-x');
+  DATA_COL_ORDER.forEach((dim, i) => {
+    const cx = colX[i] + COL_W / 2 + OX;
+    const cy = XAXIS_H / 2;
+    const t = document.createElementNS(svgNS, 'text');
+    t.setAttribute('class', 'data-svg-dim');
+    t.setAttribute('x', cx);
+    t.setAttribute('y', cy);
+    t.setAttribute('text-anchor', 'middle');
+    t.setAttribute('dominant-baseline', 'central');
+    t.textContent = DATA_DIMENSIONS[dim].name;
+    axisXG.appendChild(t);
+  });
+  svg.appendChild(axisXG);
+
+  /* Y 轴：月份右对齐 + 年份 [ 括号/竖排年号（并入 SVG） */
+  const axisYG = document.createElementNS(svgNS, 'g');
+  axisYG.setAttribute('class', 'data-svg-axis-y');
+  rowsTopDown.forEach((ym, i) => {
+    const m = parseInt(ym.slice(5, 7), 10);
+    const cy = i * ROW_H + ROW_H / 2 + OY;
+    const t = document.createElementNS(svgNS, 'text');
+    t.setAttribute('class', 'data-svg-month');
+    t.setAttribute('x', OX - 30);
+    t.setAttribute('y', cy);
+    t.setAttribute('text-anchor', 'end');
+    t.setAttribute('dominant-baseline', 'middle');
+    t.textContent = DATA_MONTH_ABBR[m - 1];
+    axisYG.appendChild(t);
+  });
+  yearGroups.forEach(g => {
+    const top = g.start * ROW_H + OY;
+    const bot = top + g.count * ROW_H;
+    const bx = 22, bw = 8;                                /* 括号竖杆 x=22，右翻边到 x=30 */
+    const p = document.createElementNS(svgNS, 'path');
+    p.setAttribute('class', 'data-svg-year-bracket');
+    p.setAttribute('d', `M ${bx + bw} ${top} L ${bx} ${top} L ${bx} ${bot} L ${bx + bw} ${bot}`);
+    axisYG.appendChild(p);
+    const yMid = (top + bot) / 2;
+    const yx = bx - 12;                                   /* 年号移到 [ 左侧，竖排居中 */
+    const yt = document.createElementNS(svgNS, 'text');
+    yt.setAttribute('class', 'data-svg-year');
+    yt.setAttribute('x', yx);
+    yt.setAttribute('y', yMid);
+    yt.setAttribute('text-anchor', 'middle');
+    yt.setAttribute('transform', `rotate(-90 ${yx} ${yMid})`);
+    yt.textContent = g.year;
+    axisYG.appendChild(yt);
+  });
+  svg.appendChild(axisYG);
+
+  /* 地形场（离屏 canvas 低分辨率累加，再上色落回 SVG <image>）：
+     每格点泼溅径向渐变"山丘"，globalCompositeOperation='lighter' 累加——交融是场的叠加而非图形变形 */
+  const TERRAIN_SCALE = 0.5;
+  const cw = Math.max(2, Math.round(gridW * TERRAIN_SCALE));
+  const ch = Math.max(2, Math.round(gridH * TERRAIN_SCALE));
+  const offCv = document.createElement('canvas');
+  offCv.width = cw; offCv.height = ch;
+  const octx = offCv.getContext('2d');
+  octx.clearRect(0, 0, cw, ch);
+  octx.globalCompositeOperation = 'lighter';
+  const hillR = 1.2 * COL_W * TERRAIN_SCALE;            /* ~43px canvas 空间，相邻格点自然叠加 */
+  rowsTopDown.forEach((ym, rowIdx) => {
+    DATA_COL_ORDER.forEach((dim, renderCol) => {
+      const cell = cells[ym + '|' + dim];
+      if (!cell || cell.minutes <= 0) return;
+      const gx = (colX[renderCol] + COL_W / 2) * TERRAIN_SCALE;
+      const gy = (rowIdx * ROW_H + ROW_H / 2) * TERRAIN_SCALE;
+      const v = cell.minutes / (maxMinutes || 1) * 10;     /* 海拔 0~10 */
+      const a = v / 10;                                    /* 中心 alpha = 海拔归一化 */
+      const g = octx.createRadialGradient(gx, gy, 0, gx, gy, hillR);
+      g.addColorStop(0, `rgba(255,255,255,${a})`);
+      g.addColorStop(1, 'rgba(255,255,255,0)');
+      octx.fillStyle = g;
+      octx.beginPath();
+      octx.arc(gx, gy, hillR, 0, Math.PI * 2);
+      octx.fill();
+    });
+  });
+
+  /* 逐像素上色：读回强度场 → 归一化 → 色带插值；gamma 压缩避免单点极高把其余地形压成全青 */
+  const img = octx.getImageData(0, 0, cw, ch);
+  const d = img.data;
+  let maxA = 0;
+  for (let p = 3; p < d.length; p += 4) if (d[p] > maxA) maxA = d[p];
+  const intensity = new Float32Array(cw * ch);
+  for (let i = 0, p = 3; i < intensity.length; i++, p += 4) {
+    intensity[i] = d[p] / (maxA || 1);
+  }
+  const FEATHER = 10;                                       /* canvas px，边缘羽化宽度（地形最外侧渐隐） */
+  for (let i = 0, p = 0; i < intensity.length; i++, p += 4) {
+    const raw = intensity[i];
+    if (raw < 0.06) { d[p + 3] = 0; continue; }           /* 接近 0 区域完全透明，不蒙色雾 */
+    const x = i % cw, y = (i / cw) | 0;
+    const ed = Math.min(x, y, cw - 1 - x, ch - 1 - y) / FEATHER;
+    const edgeFade = ed > 1 ? 1 : (ed < 0 ? 0 : ed);      /* 边缘 0→中心 1，软过渡，裁掉画布硬边 */
+    const t = Math.pow(raw, 0.6);                          /* gamma 压缩：抬升中低端，避免极端值压扁地形 */
+    const col = dataColor(t);
+    const a = (0.25 + 0.75 * t) * 0.7 * edgeFade;           /* 整体半透明 ×0.7 ×边缘羽化 */
+    d[p] = col.r; d[p + 1] = col.g; d[p + 2] = col.b; d[p + 3] = Math.round(a * 255);
+  }
+  octx.putImageData(img, 0, 0);
+
+  /* 落回 SVG <image>：平滑放大回全分辨率，边缘自然柔和 */
+  const terrImg = document.createElementNS(svgNS, 'image');
+  terrImg.setAttribute('class', 'data-terrain');
+  terrImg.setAttribute('x', OX);
+  terrImg.setAttribute('y', OY);
+  terrImg.setAttribute('width', gridW);
+  terrImg.setAttribute('height', gridH);
+  const dataURL = offCv.toDataURL();
+  terrImg.setAttributeNS('http://www.w3.org/1999/xlink', 'href', dataURL);
+  terrImg.setAttribute('href', dataURL);
+  svg.appendChild(terrImg);
+
+  /* 等高线（marching squares on intensity 场，5 级 → SVG <path> 虚线） */
+  const LEVELS = [0.2, 0.35, 0.5, 0.65, 0.8];
+  const SEG_TABLE = [
+    [], [[0,3]], [[0,1]], [[1,3]], [[1,2]], [[0,3],[1,2]], [[0,2]], [[2,3]],
+    [[2,3]], [[0,2]], [[0,1],[2,3]], [[1,2]], [[1,3]], [[0,1]], [[0,3]], []
+  ];
+  function edgePt(edge, x, y, tl, tr, br, bl, level) {
+    if (edge === 0) return [x + (level - tl) / ((tr - tl) || 1e-6), y];           /* top */
+    if (edge === 1) return [x + 1, y + (level - tr) / ((br - tr) || 1e-6)];     /* right */
+    if (edge === 2) return [x + (level - bl) / ((br - bl) || 1e-6), y + 1];      /* bottom */
+    return [x, y + (level - tl) / ((bl - tl) || 1e-6)];                          /* left */
+  }
+  let contourD = '';
+  const INV = 1 / TERRAIN_SCALE;                            /* canvas 坐标 → 全分辨率网格坐标 */
+  LEVELS.forEach(level => {
+    for (let y = 0; y < ch - 1; y++) {
+      for (let x = 0; x < cw - 1; x++) {
+        const tl = intensity[y * cw + x], tr = intensity[y * cw + x + 1];
+        const bl = intensity[(y + 1) * cw + x], br = intensity[(y + 1) * cw + x + 1];
+        let idx = 0;
+        if (tl >= level) idx |= 1;
+        if (tr >= level) idx |= 2;
+        if (br >= level) idx |= 4;
+        if (bl >= level) idx |= 8;
+        const segs = SEG_TABLE[idx];
+        if (!segs.length) continue;
+        for (let s = 0; s < segs.length; s++) {
+          const [e1, e2] = segs[s];
+          const p1 = edgePt(e1, x, y, tl, tr, br, bl, level);
+          const p2 = edgePt(e2, x, y, tl, tr, br, bl, level);
+          const x1 = p1[0] * INV + OX, y1 = p1[1] * INV + OY;
+          const x2 = p2[0] * INV + OX, y2 = p2[1] * INV + OY;
+          contourD += `M${x1.toFixed(1)} ${y1.toFixed(1)}L${x2.toFixed(1)} ${y2.toFixed(1)}`;
+        }
+      }
+    }
+  });
+  if (contourD) {
+    const contPath = document.createElementNS(svgNS, 'path');
+    contPath.setAttribute('class', 'data-contour');
+    contPath.setAttribute('d', contourD);
+    contPath.setAttribute('fill', 'none');
+    svg.appendChild(contPath);
+  }
+
+  /* 命中区：每格点中心固定 r=20 透明 circle（tooltip 与地形无关） */
+  const hitG = document.createElementNS(svgNS, 'g');
+  hitG.setAttribute('class', 'data-hit');
+  rowsTopDown.forEach((ym, rowIdx) => {
+    DATA_COL_ORDER.forEach((dim, renderCol) => {
+      const cell = cells[ym + '|' + dim];
+      if (!cell || cell.minutes <= 0) return;
+      const cx = colX[renderCol] + COL_W / 2 + OX;
+      const cy = rowIdx * ROW_H + ROW_H / 2 + OY;
+      const hit = document.createElementNS(svgNS, 'circle');
+      hit.setAttribute('cx', cx); hit.setAttribute('cy', cy);
+      hit.setAttribute('r', 20);
+      hit.setAttribute('fill', 'transparent');
+      hit.setAttribute('class', 'data-hit-circle');
+      hit.setAttribute('data-dim', dim);
+      hit.setAttribute('data-ym', ym);
+      hit.setAttribute('data-count', cell.count);
+      hit.setAttribute('data-minutes', cell.minutes);
+      hitG.appendChild(hit);
+    });
+  });
+  svg.appendChild(hitG);
+
+  /* 单层容器：svg 直入 .data-scroll，取消 grid table / sticky 轴 */
+  wrap.innerHTML = '';
+  wrap.appendChild(svg);
+
+  /* tooltip */
+  let tip = document.getElementById('data-tip');
+  if (!tip) {
+    tip = document.createElement('div');
+    tip.id = 'data-tip';
+    tip.className = 'data-tip';
+    document.body.appendChild(tip);
+  }
+  const hitCircles = svg.querySelectorAll('.data-hit-circle');
+  hitCircles.forEach(c => {
+    c.addEventListener('mouseenter', () => showDataTip(tip, c));
+    c.addEventListener('mousemove', e => moveDataTip(tip, e));
+    c.addEventListener('mouseleave', () => tip.classList.remove('show'));
+    c.addEventListener('click', () => showDataTip(tip, c));
+  });
+
+  /* 入场动画：地形图淡入（reduced-motion 跳过） */
+  const reduce = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+  if (!reduce) {
+    terrImg.style.opacity = '0';
+    terrImg.style.transition = 'opacity 0.5s ease-out';
+    requestAnimationFrame(() => { terrImg.style.opacity = '1'; });
+  }
+}
+
+function showDataTip(tip, circle) {
+  const dim = parseInt(circle.getAttribute('data-dim'), 10);
+  const ym = circle.getAttribute('data-ym');
+  const count = parseInt(circle.getAttribute('data-count'), 10);
+  const minutes = parseInt(circle.getAttribute('data-minutes'), 10);
+  const [y, m] = ym.split('-').map(Number);
+  const h = Math.floor(minutes / 60);
+  const min = minutes % 60;
+  tip.innerHTML =
+    `<div class="data-tip-dim">${DATA_DIMENSIONS[dim].name}</div>` +
+    `<div class="data-tip-date">${y}年${m}月</div>` +
+    `<div class="data-tip-line">完成 <strong>${count}</strong> 件</div>` +
+    `<div class="data-tip-line">预计节约 <strong>${h}h ${min}min</strong></div>`;
+  tip.classList.add('show');
+}
+
+function moveDataTip(tip, e) {
+  let x = e.clientX + 14, y = e.clientY + 14;
+  const r = tip.getBoundingClientRect();
+  if (x + r.width > window.innerWidth - 8) x = e.clientX - r.width - 14;
+  if (y + r.height > window.innerHeight - 8) y = e.clientY - r.height - 14;
+  tip.style.left = x + 'px';
+  tip.style.top = y + 'px';
 }
 
 /* ===================== 初始化 ===================== */
-window.addEventListener('resize', resizeCanvas);
-window.addEventListener('mousemove', e => {
-  mouse.x = e.clientX;
-  mouse.y = e.clientY;
-  mouseOnPage = true;
-  // 清单页收据区域不触发像素交互
-  if (currentPage === 'list') { mouseOnPage = false; mouse.x = -1000; mouse.y = -1000; return; }
-});
-window.addEventListener('mouseleave', () => {
-  mouseOnPage = false;
-  mouse.x = -1000;
-  mouse.y = -1000;
-});
-window.addEventListener('mouseenter', () => {
-  mouseOnPage = true;
-});
-window.addEventListener('touchmove', e => {
-  const t = e.touches[0];
-  mouse.x = t.clientX;
-  mouse.y = t.clientY;
-  mouseOnPage = true;
-}, { passive: true });
-
 document.addEventListener('DOMContentLoaded', () => {
   getPages();
   setupPrintButton();
-  resizeCanvas();
-  drawPixelBackground();
   carryOverUnarchived();
   updatePrintButton();
   showPage('home');
 });
 
 document.addEventListener('keydown', e => {
-  if (e.key === 'Escape') showPage('home');
+  if (e.key === 'Escape' && e.target.tagName !== 'INPUT') showPage('home');
 });

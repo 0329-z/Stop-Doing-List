@@ -1,0 +1,22 @@
+{
+  "printer": {
+    "frames": 48,
+    "duration_s": 4.0,
+    "size": "344x308"
+  },
+  "clock": {
+    "frames": 48,
+    "duration_s": 4.0,
+    "size": "241x288"
+  },
+  "door": {
+    "frames": 27,
+    "duration_s": 2.25,
+    "size": "303x321"
+  },
+  "tree": {
+    "frames": 48,
+    "duration_s": 4.0,
+    "size": "434x360"
+  }
+}

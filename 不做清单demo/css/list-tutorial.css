@@ -1,0 +1,257 @@
+/* ==================== LIST 页新手引导 list-tutorial ==================== */
+#list-tutorial-root {
+  position: fixed;
+  inset: 0;
+  z-index: 9999;
+  pointer-events: none;
+}
+
+/* ---- 遮罩 4 块拼合镂空 ---- */
+.lt-mask {
+  position: fixed;
+  background: rgba(26, 20, 16, 0.72);
+  pointer-events: auto;
+  left: 0;
+}
+.lt-mask.lt-m-top    { top: 0; width: 100vw; }
+.lt-mask.lt-m-bottom { width: 100vw; }
+.lt-mask.lt-m-left   { left: 0; }
+.lt-mask.lt-m-right  { }
+
+/* ---- 镂空描边（呼吸透明度） ---- */
+.lt-cutout {
+  position: fixed;
+  border: 2px solid var(--accent-light);
+  border-radius: 6px;
+  pointer-events: none;
+  animation: lt-breath 4s ease-in-out infinite;
+  transition: border-color 0.3s ease;
+}
+.lt-cutout.success { border-color: var(--leaf); }
+@keyframes lt-breath {
+  0%, 100% { opacity: 0.55; }
+  50%      { opacity: 1; }
+}
+
+/* ---- 手影层 ---- */
+.lt-ghost {
+  position: fixed;
+  left: 0; top: 0;
+  width: 0; height: 0;
+  pointer-events: none;
+  z-index: 2;
+}
+.lt-ghost-dot {
+  position: fixed;
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  background: var(--paper);
+  opacity: 0;
+  border: 2px solid var(--accent);
+  transform: translate(-50%, -50%) scale(1);
+  will-change: transform, opacity, left, top;
+  pointer-events: none;
+}
+.lt-ghost-svg {
+  position: fixed;
+  left: 0; top: 0;
+  width: 100vw;
+  height: 100vh;
+  pointer-events: none;
+  overflow: visible;
+}
+.lt-ghost-svg line {
+  stroke: var(--accent-light);
+  stroke-width: 2;
+  stroke-dasharray: 6 6;
+  fill: none;
+  opacity: 0.6;
+}
+
+/* reduced-motion：隐藏动效手影，改静态箭头 */
+@media (prefers-reduced-motion: reduce) {
+  .lt-ghost-dot, .lt-ghost-svg { display: none !important; }
+}
+.lt-arrow {
+  position: fixed;
+  display: none;
+  pointer-events: none;
+  z-index: 2;
+  color: var(--paper);
+  font-size: 28px;
+  opacity: 0.85;
+  transform: translate(-50%, -50%);
+}
+@media (prefers-reduced-motion: reduce) {
+  .lt-arrow { display: block; }
+}
+
+/* ---- 文案气泡 ---- */
+.lt-bubble {
+  position: fixed;
+  background: var(--paper);
+  color: var(--ink);
+  border: 1px solid var(--paper-dim);
+  border-radius: 10px;
+  padding: 14px 18px;
+  max-width: min(360px, 88vw);
+  box-shadow: 0 6px 24px rgba(0, 0, 0, 0.4);
+  pointer-events: none;
+  opacity: 0;
+  transform: translateY(6px);
+  transition: opacity 0.3s ease, transform 0.3s ease;
+  z-index: 3;
+}
+.lt-bubble.show {
+  opacity: 1;
+  transform: translateY(0);
+}
+.lt-bubble-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 6px;
+}
+.lt-num {
+  font-family: var(--font-mono);
+  font-size: 12px;
+  color: var(--accent);
+  letter-spacing: 0.1em;
+  font-weight: 700;
+}
+.lt-progress {
+  display: flex;
+  gap: 5px;
+  margin-left: auto;
+}
+.lt-progress .lt-dot {
+  width: 5px;
+  height: 5px;
+  border-radius: 50%;
+  background: var(--paper-dim);
+}
+.lt-progress .lt-dot.active {
+  background: var(--accent);
+}
+.lt-text {
+  font-family: var(--font-sans);
+  font-size: 13.5px;
+  line-height: 1.55;
+  color: var(--ink);
+}
+.lt-actions {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  margin-top: 10px;
+}
+.lt-replay {
+  display: inline-block;
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--accent);
+  letter-spacing: 0.08em;
+  cursor: pointer;
+  pointer-events: auto;
+  border-bottom: 1px solid transparent;
+  transition: border-color 0.2s;
+}
+.lt-replay:hover { border-color: var(--accent); }
+.lt-next {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--paper);
+  background: var(--accent);
+  letter-spacing: 0.12em;
+  cursor: pointer;
+  padding: 6px 14px;
+  border-radius: 4px;
+  border: none;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.25s ease;
+}
+.lt-next.show {
+  opacity: 1;
+  pointer-events: auto;
+}
+.lt-next:hover { filter: brightness(1.15); }
+
+/* ---- 跳过按钮（左下角，避开底部导航栏） ---- */
+.lt-skip {
+  position: fixed;
+  left: 20px;
+  bottom: 76px;
+  font-family: var(--font-mono);
+  font-size: 12px;
+  letter-spacing: 0.12em;
+  color: var(--text);
+  opacity: 0.6;
+  cursor: pointer;
+  pointer-events: auto;
+  z-index: 4;
+  transition: opacity 0.2s;
+  background: none;
+  border: none;
+  padding: 6px 10px;
+}
+.lt-skip:hover { opacity: 1; }
+
+/* ---- 完成卡 ---- */
+.lt-done {
+  position: fixed;
+  left: 50%;
+  top: 50%;
+  transform: translate(-50%, -50%) scale(0.96);
+  background: var(--paper);
+  color: var(--ink);
+  border: 1px solid var(--paper-dim);
+  border-radius: 14px;
+  padding: 32px 40px;
+  max-width: min(420px, 86vw);
+  text-align: center;
+  box-shadow: 0 12px 48px rgba(0, 0, 0, 0.5);
+  opacity: 0;
+  transition: opacity 0.5s ease, transform 0.5s ease;
+  pointer-events: none;
+  z-index: 3;
+}
+.lt-done.show {
+  opacity: 1;
+  transform: translate(-50%, -50%) scale(1);
+}
+.lt-done-text {
+  font-family: var(--font-sans);
+  font-size: 15px;
+  line-height: 1.6;
+  color: var(--ink);
+}
+.lt-done-mark {
+  font-family: var(--font-mono);
+  font-size: 12px;
+  color: var(--accent);
+  letter-spacing: 0.2em;
+  margin-bottom: 12px;
+}
+
+/* ---- 重看入口（#page-list 右下角） ---- */
+#tutorial-replay {
+  position: fixed;
+  right: 20px;
+  bottom: 76px;
+  font-family: var(--font-mono);
+  font-size: 11px;
+  letter-spacing: 0.14em;
+  color: var(--muted);
+  opacity: 0.5;
+  cursor: pointer;
+  background: none;
+  border: none;
+  padding: 6px 10px;
+  z-index: 40;
+  transition: opacity 0.2s;
+  display: none;
+}
+#tutorial-replay:hover { opacity: 1; }
+#tutorial-replay.show { display: block; }

@@ -1,0 +1,62 @@
+/* icon-gate.css — 副页面入场门：中央图标，hover 播放逐帧动画，点击渐隐进入 */
+
+/* 显示框尺寸常量：四页共用同一值 */
+:root {
+  --icon-gate-size: 220px;
+}
+@media (max-width: 480px) {
+  :root { --icon-gate-size: 160px; }
+}
+
+/* 入场门覆盖层：fixed 铺满视口，正中心定位 */
+.icon-gate {
+  position: fixed;
+  inset: 0;
+  z-index: 30;            /* 高于页面内容(10)、低于导航(50)；不挡导航点击 */
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--bg, #1A1410);
+  /* 默认隐藏，.show 时显示 */
+  opacity: 0;
+  visibility: hidden;
+  transition: opacity 0.5s ease, visibility 0.5s ease;
+  cursor: pointer;
+}
+.icon-gate.show {
+  opacity: 1;
+  visibility: visible;
+}
+.icon-gate.fading {
+  opacity: 0;
+  visibility: visible;   /* 过渡期间保持 visible，结束后由 JS 设为 hidden */
+}
+.icon-gate.hidden {
+  display: none;          /* 渐隐完成后的最终态：彻底移出布局 */
+}
+
+/* 图标显示框：固定方形，object-fit:contain 等比缩放各图标原始尺寸 */
+.icon-gate-frame {
+  width: var(--icon-gate-size);
+  height: var(--icon-gate-size);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  /* hover 缩放用内层 img，外层不动以免影响居中定位 */
+}
+.icon-gate-frame img {
+  max-width: 100%;
+  max-height: 100%;
+  object-fit: contain;
+  image-rendering: pixelated;
+  image-rendering: crisp-edges;
+  display: block;
+  transform: scale(0.92);
+  transition: transform 0.25s ease;
+  will-change: transform;
+  /* 透明 PNG 在深色底上的混合 */
+  mix-blend-mode: normal;
+}
+.icon-gate:hover .icon-gate-frame img {
+  transform: scale(1);
+}

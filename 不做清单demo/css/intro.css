@@ -1,0 +1,535 @@
+/* intro.css — 首次启动交互序列样式（独立文件，便于整体启停与局部改样式） */
+
+/* ==================== Overlay 根容器 ==================== */
+#intro-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 100;          /* 高于 nav(50) / pages(10) / bg-canvas(0) */
+  overflow: hidden;
+  background: #000; /* 纯黑盖住主页，开场动画作为独立段落存在 */
+}
+
+/* 开场播放期间隐藏底部导航栏（文字链接 + 像素圆点图标层），
+   overlay 透明否则会透出。body.intro-playing 由 intro.js 在 boot 时加上、
+   overlay 移除时移除。visibility:hidden 保留布局、避免重排。 */
+body.intro-playing #top-nav,
+body.intro-playing #nav-icon-canvas {
+  visibility: hidden !important;
+}
+
+/* ==================== Stage 1: 群聊弹窗（Win95 复古风） ==================== */
+.intro-chat-modal {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  z-index: 1;
+  width: min(460px, 92vw);
+  max-height: 85vh;
+  background: #c0c0c0;            /* Win95 窗口银灰 */
+  border-radius: 0;               /* 像素硬边角 */
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  box-sizing: border-box;
+  font-family: 'MS Sans Serif', 'Tahoma', 'Microsoft YaHei', var(--font-sans);
+  opacity: 0;
+  transition: opacity 420ms ease-out, transform 420ms cubic-bezier(0.22, 0.61, 0.36, 1);
+  will-change: opacity, transform;
+  /* Win95 凸起斜面边框 + 外阴影 */
+  box-shadow:
+    inset -1px -1px 0 #000,
+    inset 1px 1px 0 #fff,
+    inset -2px -2px 0 #808080,
+    inset 2px 2px 0 #dfdfdf,
+    6px 6px 0 rgba(0, 0, 0, 0.35),
+    12px 12px 32px rgba(0, 0, 0, 0.4);
+  padding: 2px;                   /* 边框留白 */
+}
+.intro-chat-modal.shown {
+  opacity: 1;
+  transform: translate(-50%, -50%) scale(1);
+}
+/* 入场前轻微下沉 + 缩放 */
+.intro-chat-modal:not(.shown) {
+  transform: translate(-50%, calc(-50% + 12px)) scale(0.96);
+}
+
+/* 标题栏：海军蓝渐变 + 白字 + 窗口控制按钮 */
+.intro-chat-titlebar {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  padding: 3px 3px 3px 5px;
+  background: linear-gradient(90deg, #000080 0%, #1084d0 100%);
+  color: #fff;
+  font-weight: 700;
+  font-size: 12px;
+  letter-spacing: 0.04em;
+  flex-shrink: 0;
+  font-family: 'MS Sans Serif', 'Tahoma', 'Microsoft YaHei', var(--font-sans);
+}
+.intro-chat-titlebar-icon {
+  width: 14px;
+  height: 14px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 12px;
+  line-height: 1;
+  background: #c0c0c0;
+  color: #000080;
+  border-radius: 0;
+  box-shadow:
+    inset -1px -1px 0 #000,
+    inset 1px 1px 0 #fff;
+  flex-shrink: 0;
+}
+.intro-chat-titlebar-title {
+  flex: 1;
+  padding-left: 2px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.intro-chat-titlebar-time {
+  font-size: 11px;
+  font-weight: 400;
+  opacity: 0.85;
+  margin-right: 4px;
+  font-family: 'MS Sans Serif', 'Tahoma', monospace;
+}
+/* Win95 窗口控制按钮（最小化/最大化/关闭） */
+.intro-chat-titlebar-ctrls {
+  display: flex;
+  gap: 2px;
+  flex-shrink: 0;
+}
+.intro-chat-ctrl-btn {
+  width: 16px;
+  height: 14px;
+  background: #c0c0c0;
+  border: none;
+  border-radius: 0;
+  font-size: 9px;
+  font-weight: 700;
+  line-height: 14px;
+  text-align: center;
+  color: #000;
+  cursor: default;
+  box-shadow:
+    inset -1px -1px 0 #808080,
+    inset 1px 1px 0 #fff,
+    inset -2px -2px 0 #000,
+    inset 2px 2px 0 #dfdfdf;
+  padding: 0;
+  font-family: 'Marlett', 'MS Sans Serif', sans-serif;
+}
+.intro-chat-ctrl-btn.close {
+  color: #fff;
+  background: #c0c0c0;
+}
+
+/* 菜单栏：文件/编辑/查看/帮助 */
+.intro-chat-menubar {
+  display: flex;
+  gap: 0;
+  padding: 2px 3px;
+  background: #c0c0c0;
+  flex-shrink: 0;
+  font-size: 12px;
+  font-family: 'MS Sans Serif', 'Tahoma', 'Microsoft YaHei', var(--font-sans);
+}
+.intro-chat-menubar-item {
+  padding: 2px 8px;
+  color: #000;
+  cursor: default;
+}
+.intro-chat-menubar-item u { text-decoration: underline; }
+
+/* 工具栏：表情/附件/发送等快捷图标 */
+.intro-chat-toolbar {
+  display: flex;
+  align-items: center;
+  gap: 3px;
+  padding: 3px 4px;
+  margin: 0 4px;
+  background: #c0c0c0;
+  flex-shrink: 0;
+  box-shadow:
+    inset -1px -1px 0 #808080,
+    inset 1px 1px 0 #fff;
+}
+.intro-chat-toolbar-btn {
+  width: 24px;
+  height: 22px;
+  background: #c0c0c0;
+  border: none;
+  border-radius: 0;
+  font-size: 13px;
+  line-height: 22px;
+  text-align: center;
+  cursor: default;
+  box-shadow:
+    inset -1px -1px 0 #808080,
+    inset 1px 1px 0 #fff,
+    inset -2px -2px 0 #000,
+    inset 2px 2px 0 #dfdfdf;
+  padding: 0;
+}
+.intro-chat-toolbar-sep {
+  width: 2px;
+  height: 18px;
+  background: #808080;
+  box-shadow: inset -1px 0 0 #fff;
+  margin: 0 1px;
+}
+
+/* 消息区：白底 + Win95 凹陷边框 */
+.intro-chat-body {
+  flex: 1;
+  margin: 4px 4px 0;
+  background: #fff;
+  box-shadow:
+    inset 1px 1px 0 #808080,
+    inset -1px -1px 0 #fff,
+    inset 2px 2px 0 #000,
+    inset -2px -2px 0 #dfdfdf;
+  display: flex;
+  flex-direction: column;
+  justify-content: flex-end;
+  gap: 12px;
+  padding: 14px 12px;
+  overflow: hidden;
+  box-sizing: border-box;
+  min-height: 300px;
+}
+
+/* 状态栏：凹陷条 */
+.intro-chat-statusbar {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 2px 5px;
+  margin: 4px;
+  background: #c0c0c0;
+  box-shadow:
+    inset 1px 1px 0 #808080,
+    inset -1px -1px 0 #fff,
+    inset 2px 2px 0 #000,
+    inset -2px -2px 0 #dfdfdf;
+  font-size: 11px;
+  color: #000;
+  font-family: 'MS Sans Serif', 'Tahoma', 'Microsoft YaHei', var(--font-sans);
+  flex-shrink: 0;
+}
+.intro-chat-statusbar-dot {
+  width: 7px;
+  height: 7px;
+  background: #008000;       /* Win95 绿 */
+  border-radius: 0;          /* 像素方点 */
+  flex-shrink: 0;
+}
+.intro-chat-statusbar-text { flex-shrink: 0; }
+.intro-chat-statusbar-typing {
+  margin-left: auto;
+  font-style: italic;
+  color: #000080;
+  opacity: 0;                 /* 默认隐藏，右侧 typing 时显示 */
+  transition: opacity 0.3s;
+}
+.intro-chat-statusbar-typing.on { opacity: 1; }
+
+/* 消息时间戳 */
+.intro-msg-time {
+  font-size: 10px;
+  color: #999;
+  font-family: 'MS Sans Serif', 'Tahoma', monospace;
+  margin-top: 2px;
+  margin-left: 38px;          /* 对齐头像右侧（头像 30 + 间距 8） */
+}
+.intro-msg.right .intro-msg-time {
+  text-align: right;
+  margin-left: 0;
+  margin-right: 4px;
+}
+
+/* 输入栏：凹陷输入框 + 表情/附件按钮 + 发送按钮 */
+.intro-chat-inputbar {
+  display: flex;
+  align-items: flex-end;
+  gap: 4px;
+  padding: 4px;
+  margin: 0 4px 4px;
+  flex-shrink: 0;
+}
+.intro-chat-input-icons {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  flex-shrink: 0;
+}
+.intro-chat-input-field {
+  flex: 1;
+  background: #fff;
+  min-height: 24px;
+  max-height: 60px;
+  overflow-y: auto;
+  padding: 4px 6px;
+  font-size: 13px;
+  font-family: 'MS Sans Serif', 'Tahoma', 'Microsoft YaHei', var(--font-sans);
+  color: #000;
+  box-shadow:
+    inset 1px 1px 0 #808080,
+    inset -1px -1px 0 #fff,
+    inset 2px 2px 0 #000,
+    inset -2px -2px 0 #dfdfdf;
+  cursor: text;
+  line-height: 1.4;
+  empty-cells: show;
+}
+/* 输入框里的闪烁光标（右侧 typing 时显示） */
+.intro-chat-input-cursor {
+  display: inline-block;
+  width: 1px;
+  height: 14px;
+  background: #000;
+  animation: introCursorBlink 1s steps(2) infinite;
+  vertical-align: middle;
+}
+@keyframes introCursorBlink {
+  0%, 50% { opacity: 1; }
+  51%, 100% { opacity: 0; }
+}
+.intro-chat-send-btn {
+  background: #c0c0c0;
+  border: none;
+  border-radius: 0;
+  font-size: 12px;
+  font-weight: 700;
+  padding: 5px 14px;
+  color: #000;
+  cursor: default;
+  box-shadow:
+    inset -1px -1px 0 #808080,
+    inset 1px 1px 0 #fff,
+    inset -2px -2px 0 #000,
+    inset 2px 2px 0 #dfdfdf;
+  font-family: 'MS Sans Serif', 'Tahoma', 'Microsoft YaHei', var(--font-sans);
+  flex-shrink: 0;
+}
+
+/* 单条消息：滑入动画 */
+.intro-msg {
+  display: flex;
+  flex-direction: column;
+  opacity: 0;
+  transform: translateY(14px);
+  transition: opacity var(--intro-slide, 350ms) ease-out,
+              transform var(--intro-slide, 350ms) ease-out;
+  will-change: transform, opacity;
+}
+.intro-msg.shown { opacity: 1; transform: translateY(0); }
+
+.intro-msg.left  { align-self: flex-start; }
+.intro-msg.right { align-self: flex-end; }
+
+.intro-msg-head {
+  display: flex;
+  align-items: center;
+  margin-bottom: 4px;
+}
+
+/* 头像：方形像素感 */
+.intro-avatar {
+  width: 30px;
+  height: 30px;
+  border-radius: 2px;            /* 接近方形 */
+  background: #c0c0c0;
+  font-size: 16px;
+  line-height: 30px;
+  text-align: center;
+  overflow: hidden;
+  flex-shrink: 0;
+  box-shadow:
+    inset -1px -1px 0 #808080,
+    inset 1px 1px 0 #fff;
+}
+.intro-avatar img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}
+
+.intro-name {
+  font-size: 12px;
+  color: #000;
+  font-weight: 700;
+  font-family: 'MS Sans Serif', 'Tahoma', 'Microsoft YaHei', var(--font-sans);
+  margin-left: 8px;
+}
+
+/* 气泡：Win95 消息框感（小圆角 + 1px 边） */
+.intro-bubble {
+  background: #f0f0f0;
+  color: #000;
+  border-radius: 4px;
+  border: 1px solid #808080;
+  box-shadow: inset 1px 1px 0 #fff, inset -1px -1px 0 #c0c0c0;
+  padding: 8px 12px;
+  font-size: 13px;
+  line-height: 1.5;
+  font-family: 'MS Sans Serif', 'Tahoma', 'Microsoft YaHei', var(--font-sans);
+  max-width: 78%;
+  box-sizing: border-box;
+  word-break: break-word;
+}
+.intro-msg.left  .intro-bubble { border-bottom-left-radius: 1px; }
+.intro-msg.right .intro-bubble {
+  border-bottom-right-radius: 1px;
+  background: #d8e8f0;            /* 浅蓝，像 Win95 选中态 */
+  border-color: #1084d0;
+}
+/* 指定短消息单行显示（段永平/乔布斯），长消息保持 78% 换行 */
+.intro-bubble.nowrap { white-space: nowrap; max-width: none; }
+
+/* typing 气泡：三点 */
+.intro-bubble.typing {
+  display: inline-flex;
+  align-items: center;
+  padding: 10px 12px;
+}
+.intro-bubble.typing .dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: #000080;
+  display: inline-block;
+  margin: 0 1px;
+  animation: introTypingBounce 1.2s infinite ease-in-out;
+}
+.intro-bubble.typing .dot:nth-child(2) { animation-delay: 0.15s; }
+.intro-bubble.typing .dot:nth-child(3) { animation-delay: 0.3s; }
+
+@keyframes introTypingBounce {
+  0%, 60%, 100% { transform: translateY(0); opacity: 0.4; }
+  30%           { transform: translateY(-4px); opacity: 1; }
+}
+
+/* ==================== Stage 2: 虚拟光标 + 最大化按钮按下态 ==================== */
+.intro-cursor {
+  position: absolute;
+  top: 0;
+  left: 0;
+  z-index: 6;
+  pointer-events: none;
+  transform-origin: 1px 1px;            /* 箭头尖端为旋转/缩放支点 */
+  will-change: transform, opacity;
+}
+/* Win95 按钮按下态：凸凹斜面互换 */
+.intro-chat-ctrl-btn.pressed {
+  box-shadow:
+    inset -1px -1px 0 #fff,
+    inset 1px 1px 0 #808080,
+    inset -2px -2px 0 #dfdfdf,
+    inset 2px 2px 0 #000;
+}
+
+/* ==================== Stage 3: 删除线揭示（两块画布 + 交互层） ==================== */
+#intro-scene-sharp,
+#intro-strike-unrevealed {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  display: block;
+  pointer-events: none;
+}
+#intro-scene-sharp          { z-index: 2; }   /* 揭示态（下层）：完整 STOP-DOING LIST，无删除线 */
+#intro-strike-unrevealed    { z-index: 3; }   /* 未揭示态（上层）：TODO LIST + 删除线，clip-path 随前沿裁剪 */
+.intro-strike-layer {
+  position: absolute;
+  inset: 0;
+  z-index: 4;
+  touch-action: none;                    /* 限制触屏默认手势，pointer events 统一接管 */
+  cursor: default;
+}
+
+/* ==================== Stage 3/4: 底部提示（白底配色） ==================== */
+.intro-hint {
+  position: absolute;
+  bottom: calc(16vh + 50px);
+  left: 0;
+  right: 0;
+  z-index: 5;
+  text-align: center;
+  font-family: 'MS Sans Serif', 'Tahoma', var(--font-sans);
+  font-size: 13px;
+  color: rgba(0, 0, 0, 0.55);            /* 适配白底 */
+  letter-spacing: 0.1em;
+  pointer-events: none;
+  transition: opacity 0.4s ease-out;
+  animation: introHintBlink 1.35s ease-in-out infinite;
+}
+.intro-hint.fade { opacity: 0; animation: none; }
+@keyframes introHintBlink {
+  0%, 100% { opacity: 1; }
+  50%      { opacity: 0.35; }
+}
+
+/* ==================== Stage 5: 像素故障过渡 canvas ==================== */
+#intro-glitch {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  z-index: 7;
+  display: block;
+  pointer-events: none;
+}
+
+/* ==================== SKIP 按钮（像素风，黑线白底） ==================== */
+.intro-skip {
+  position: absolute;
+  top: 28px;
+  right: 28px;
+  z-index: 8;
+  background: #fff;
+  color: #000;
+  border: 2px solid #000;
+  border-radius: 0;                /* 像素硬角 */
+  box-shadow: 3px 3px 0 #000;     /* 硬投影，无模糊 = 像素感 */
+  font-family: var(--font-mono), 'Courier New', monospace;
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.18em;
+  padding: 7px 14px;
+  cursor: pointer;
+  transition: transform 0.08s steps(2), box-shadow 0.08s steps(2), background 0.08s;
+}
+.intro-skip:hover  { background: #e8e8e8; }
+.intro-skip:active {
+  transform: translate(3px, 3px);  /* 按下吃掉投影 */
+  box-shadow: none;
+}
+
+/* ---- 防主页闪现：intro 接管前隐藏页面内容（overlay 除外），body 背景保留 ----
+   body 背景 var(--bg) 已在 style.css 的 html,body 规则中设定，canvas 被隐藏后露出项目深色底色，不露白。*/
+body.intro-pending > *:not(#intro-overlay) { visibility: hidden; }
+
+/* ---- 主页故障余波：overlay 淡出期间全屏轻量故障，衔接 intro 结尾（约 480ms，steps 跳切）----
+   html 背景已在 style.css 的 html,body 规则中设为 var(--bg)，切片帧不露白底。
+   body 加 transform 动画期间 fixed 子元素（背景 canvas、导航）跟随抖动 = 全屏故障预期效果；
+   动画结束类移除后恢复正常，不影响后续交互。*/
+@keyframes introHomeGlitch {
+  0%   { transform: translate(0); clip-path: inset(0 0 0 0); }
+  8%   { transform: translate(-4px, 1px); clip-path: inset(18% 0 55% 0); }
+  16%  { transform: translate(3px, -2px); clip-path: inset(62% 0 8% 0); }
+  24%  { transform: translate(0); clip-path: inset(0 0 0 0); }
+  38%  { transform: translate(5px, 2px); clip-path: inset(40% 0 32% 0); }
+  48%  { transform: translate(-3px, -1px); clip-path: inset(75% 0 4% 0); }
+  60%  { transform: translate(2px, 0); clip-path: inset(8% 0 80% 0); }
+  72%, 100% { transform: translate(0); clip-path: inset(0 0 0 0); }
+}
+body.intro-glitch-in { animation: introHomeGlitch 480ms steps(1, end) both; }
